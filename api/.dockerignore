@@ -1,0 +1,71 @@
+# ============================================================
+#  Files that MUST NOT enter the build context.
+#
+#  Two reasons:
+#    1. Smaller context = faster `docker build`, smaller image, fewer layer
+#       cache invalidations.
+#    2. Anything copied from the host is shipped to the image. node_modules
+#       built on macOS / Windows is incompatible with alpine; .git is
+#       50 MB+ of nothing useful in production.
+#
+#  Anything you uncomment must be reviewed for secret leakage —
+#  see Phase 9 docs/security/owasp-top10.md (A02 / A05).
+# ============================================================
+
+# VCS + IDE
+.git
+.gitignore
+.gitattributes
+.github
+.husky
+.vscode
+.idea
+
+# Local dependencies (rebuilt inside the image)
+node_modules
+npm-debug.log*
+yarn-error.log
+package-lock.json.bak
+
+# Test artefacts
+coverage
+.nyc_output
+*.lcov
+tests
+jest.config.js
+.eslintcache
+
+# Logs + tmp
+logs
+*.log
+tmp
+.cache
+
+# Build / OS artefacts
+dist
+.DS_Store
+Thumbs.db
+*.swp
+*.tsbuildinfo
+
+# Docs (kept as separate artefacts, not shipped in the image)
+docs
+*.md
+!README.md
+
+# Compose + dev tooling — never enters the image, always mounted/applied externally
+docker-compose*.yml
+docker/Dockerfile*
+.dockerignore
+
+# Secrets — even .env.example is excluded; the runtime gets env from the orchestrator
+.env
+.env.*
+!.env.example
+
+# Phase 0 placeholders
+.gitkeep
+
+# Bull Board scaffold script — kept (used in dev compose), but no other scripts
+scripts/setup-husky.js
+scripts/audit-routes.js

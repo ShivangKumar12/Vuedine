@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your Vuedine data export is ready</title>
+  <style>
+    body { margin: 0; padding: 0; background: #f6f6f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .wrapper { max-width: 600px; margin: 40px auto; background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+    .hero { background: linear-gradient(135deg, #EC1B7C 0%, #F43F5E 50%, #FB923C 100%); padding: 40px 40px 32px; text-align: center; color: #fff; }
+    .hero h1 { margin: 0 0 8px; font-size: 28px; font-weight: 800; }
+    .body { padding: 40px; }
+    .body p { color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px; }
+    .cta { display: block; background: linear-gradient(135deg, #EC1B7C 0%, #F43F5E 100%); color: #fff !important; text-decoration: none; text-align: center; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; margin: 28px 0; }
+    .note { font-size: 13px; color: #9CA3AF; }
+    .footer { background: #f9fafb; padding: 20px 40px; text-align: center; font-size: 12px; color: #9CA3AF; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="hero">
+      <h1>Your export is ready 📦</h1>
+    </div>
+    <div class="body">
+      <p>Hi {{name}},</p>
+      <p>
+        We've finished building the export of your Vuedine workspace data.
+        It includes your branches, staff, menu, orders, payments and promotions.
+      </p>
+      <a class="cta" href="{{downloadUrl}}">Download export</a>
+      <p class="note">Summary: {{counts}}</p>
+      <p class="note">
+        For your security this link may expire. If you didn't request this export,
+        please contact support immediately.
+      </p>
+    </div>
+    <div class="footer">© Vuedine · Restaurant Operating System</div>
+  </div>
+</body>
+</html>

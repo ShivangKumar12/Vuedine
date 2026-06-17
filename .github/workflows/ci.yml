@@ -1,0 +1,286 @@
+# ============================================================
+#  Continuous Integration
+#
+#  Every PR + every push to main/develop runs:
+#    1. lint     — eslint + prettier (fast gate, blocks everything else)
+#    2. audit    — audit-ci (npm advisories, blocks high+ severity)
+#    3. test     — jest matrix on Node 20 + 22 against real Postgres + Redis
+#    4. build    — multi-arch image build, push to GHCR (on push only)
+#
+#  Concurrency: a new push to a branch cancels its in-flight CI run.
+#  Builds (downstream of test) inherit the cancellation so we don't waste
+#  GHCR storage on commits that have already been replaced.
+# ============================================================
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+        working-directory: api
+      - run: npm run lint
+        working-directory: api
+      - run: npx prettier --check "**/*.{js,json,md,yml}"
+        working-directory: api
+      - name: Route security audit
+        run: npm run security:routes
+        working-directory: api
+      - name: OpenAPI doc-drift gate
+        # Regenerate the spec from JSDoc and fail if the committed copy drifts.
+        run: |
+          npm run docs:generate
+          git diff --exit-code docs/openapi.json docs/postman.json \
+            || (echo '✗ docs/openapi.json or docs/postman.json is out of date — run `npm run docs:generate` and commit' && exit 1)
+        working-directory: api
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+        working-directory: api
+      - name: npm audit (high+ severity blocks)
+        run: npx audit-ci --config audit-ci.json
+        working-directory: api
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20.x', '22.x']
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vuedine
+          POSTGRES_PASSWORD: vuedine_test
+          POSTGRES_DB: vuedine_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U vuedine"
+          --health-interval 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://vuedine:vuedine_test@localhost:5432/vuedine_test?schema=public
+      REDIS_URL: redis://localhost:6379/15
+      JWT_ACCESS_SECRET: test-access-secret-min-32-chars-aaaaaaaaaaaaaaaaaa
+      JWT_REFRESH_SECRET: test-refresh-secret-min-32-chars-bbbbbbbbbbbbbbbbbb
+      BCRYPT_COST: '4'
+      RATE_LIMIT_GLOBAL_MAX: '100000'
+      RATE_LIMIT_LOGIN_MAX: '5'
+      RATE_LIMIT_LOGIN_WINDOW_MS: '60000'
+      CORS_ORIGINS: http://localhost:5173,http://localhost
+      FIELD_ENCRYPTION_KEY: ci-field-encryption-key-32-bytes-aaaaaaaa
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+        working-directory: api
+      - name: Install Postgres extensions used by the schema
+        run: |
+          PGPASSWORD=vuedine_test psql -h localhost -U vuedine -d vuedine_test -c "
+            CREATE EXTENSION IF NOT EXISTS pgcrypto;
+            CREATE EXTENSION IF NOT EXISTS citext;
+            CREATE EXTENSION IF NOT EXISTS pg_trgm;
+            CREATE EXTENSION IF NOT EXISTS btree_gin;
+          "
+      - run: npx prisma generate
+        working-directory: api
+      - run: npx prisma migrate deploy
+        working-directory: api
+      - name: Run tests with coverage
+        run: npm run test:coverage
+        working-directory: api
+      - uses: codecov/codecov-action@v4
+        if: matrix.node == '20.x'
+        with:
+          files: api/coverage/lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false # don't fail CI when codecov is degraded
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, audit]
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/api
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=,suffix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=Vuedine API
+            org.opencontainers.image.description=Restaurant POS backend
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=UNLICENSED
+
+      - id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: api
+          file: api/docker/Dockerfile
+          target: production
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Actions cache via the `gha` BuildKit driver. First build
+          # cold ≈ 4 min, warm builds ≈ 60s.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Supply chain hardening — both produce attestations attached to
+          # the image manifest in GHCR.
+          provenance: true
+          sbom: true
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/api
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  # ----------------------------------------------------------
+  #  Frontend (app/) — typecheck + production build gate.
+  #  Runs in parallel with the API jobs; a broken SPA blocks merge.
+  # ----------------------------------------------------------
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+        working-directory: app
+      - name: Typecheck (tsc --noEmit)
+        run: npm run lint
+        working-directory: app
+      - name: Production build
+        run: npm run build
+        working-directory: app
+      - name: Upload web build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: app/dist
+          retention-days: 7
+
+  # ----------------------------------------------------------
+  #  Frontend image — build + push the nginx-served SPA to GHCR.
+  #  Only on push (not PRs), mirrors the API `build` job.
+  # ----------------------------------------------------------
+  build-web:
+    runs-on: ubuntu-latest
+    needs: [web]
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/web
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=,suffix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=Vuedine Web
+            org.opencontainers.image.description=Restaurant POS dashboard + guest PWA
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=UNLICENSED
+      - id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: app
+          file: app/Dockerfile
+          target: runtime
+          push: true
+          # VITE_API_URL is environment-specific; staging/prod deploys can
+          # rebuild with the right value. Default points at the prod API.
+          build-args: |
+            VITE_API_URL=${{ vars.WEB_API_URL || 'https://api.vuedine.com' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/web
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

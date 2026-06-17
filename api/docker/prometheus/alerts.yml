@@ -1,0 +1,53 @@
+groups:
+  - name: vuedine-api
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (sum(rate(http_requests_total{status_code=~"5.."}[5m]))
+            / sum(rate(http_requests_total[5m]))) > 0.02
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: 'API error rate above 2%'
+          description: '{{ $value | humanizePercentage }} of requests returning 5xx for 5+ minutes.'
+
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le, route)
+          ) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: 'p99 latency > 1s on {{ $labels.route }}'
+
+      - alert: QueueBacklog
+        expr: queue_depth > 1000
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: 'Queue {{ $labels.queue }} backlog: {{ $value }} jobs waiting'
+
+      - alert: EventLoopLag
+        expr: nodejs_eventloop_lag_seconds{quantile="0.99"} > 0.1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: 'Node event loop lag p99 > 100ms'
+
+      - alert: AuditWriteFailures
+        expr: increase(audit_failures_total[5m]) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: 'Audit log writes failing on {{ $labels.action }}'
+
+      - alert: TokenReuseDetected
+        expr: increase(auth_events_total{action="refresh",outcome="reuse"}[1h]) > 0
+        for: 0s
+        labels: { severity: critical }
+        annotations:
+          summary: 'Refresh token reuse detected — possible session hijack'
+          description: 'A refresh token was used after rotation. Family was revoked. Investigate.'

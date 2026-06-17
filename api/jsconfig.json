@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "node",
+    "target": "es2022",
+    "checkJs": false,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "baseUrl": "."
+  },
+  "include": ["src/**/*", "tests/**/*", "scripts/**/*", "prisma/**/*"],
+  "exclude": ["node_modules", "dist", "coverage"]
+}

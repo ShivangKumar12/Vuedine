@@ -1,0 +1,89 @@
+# ============================================================
+#  Production override.
+#
+#  Apply with:
+#    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+#  Adds PgBouncer in front of Postgres + scales replicas. The actual API/worker
+#  images come from a registry (set IMAGE_TAG) — local-build paths are dropped.
+# ============================================================
+
+services:
+  api:
+    image: ghcr.io/vuedine/api:${IMAGE_TAG:-latest}
+    command: ['pm2-runtime', 'ecosystem.config.cjs', '--only', 'api']
+    deploy:
+      replicas: 4
+      resources:
+        limits: { cpus: '2', memory: '1G' }
+        reservations: { cpus: '0.5', memory: '256M' }
+      restart_policy:
+        condition: on-failure
+        max_attempts: 5
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '5' }
+    depends_on:
+      pgbouncer: { condition: service_started }
+      redis: { condition: service_healthy }
+
+  worker:
+    image: ghcr.io/vuedine/api:${IMAGE_TAG:-latest}
+    command: ['pm2-runtime', 'ecosystem.config.cjs', '--only', 'worker']
+    deploy:
+      replicas: 2
+      resources:
+        limits: { cpus: '1', memory: '1G' }
+
+  # ----- Web (dashboard + guest PWA) -----
+  # Self-contained nginx image serving the built Vite SPA. The edge proxy /
+  # load balancer routes `/` here and `/v1` + `/socket.io` to the API.
+  web:
+    image: ghcr.io/vuedine/web:${IMAGE_TAG:-latest}
+    container_name: vuedine_web
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      resources:
+        limits: { cpus: '0.5', memory: '256M' }
+        reservations: { cpus: '0.1', memory: '64M' }
+      restart_policy:
+        condition: on-failure
+        max_attempts: 5
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '5' }
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:80/healthz']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ----- PgBouncer -----
+  # Multiplexes thousands of client connections onto a small Postgres pool.
+  # Required once API replica count > 10 — without it the per-instance pool
+  # × replica count exhausts Postgres max_connections.
+  #
+  # POOL_MODE=transaction is safe for Prisma — but Prisma must be told via
+  # `?pgbouncer=true` in DATABASE_URL so it disables prepared statements.
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: vuedine_api_pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-vuedine}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-vuedine}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 25
+      RESERVE_POOL_SIZE: 5
+      SERVER_RESET_QUERY: DISCARD ALL
+      SERVER_IDLE_TIMEOUT: 600
+    ports:
+      - '6432:5432'
+    depends_on:
+      postgres: { condition: service_healthy }

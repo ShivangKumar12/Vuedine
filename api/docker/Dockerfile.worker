@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1.7
+# ============================================================
+#  Worker variant of the API image.
+#
+#  We build a single image (`vuedine-api`) and tag it twice in CI; the API
+#  and worker only differ in their entrypoint command. This Dockerfile is
+#  kept as documentation — the operational truth is in compose / k8s, where
+#  the same image runs with `command: ["node", "src/queues/workers/index.js"]`.
+#
+#  If you genuinely need a smaller worker image (no HTTP libs), this file
+#  is the place to start trimming.
+# ============================================================
+
+FROM vuedine-api:latest
+CMD ["node", "src/queues/workers/index.js"]

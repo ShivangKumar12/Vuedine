@@ -1,0 +1,79 @@
+# ============================================================
+#  Tag-driven release workflow.
+#
+#  Triggered by pushing a semver tag (v0.1.0, v1.2.3, ...).
+#  Produces:
+#    - GitHub Release with auto-generated changelog
+#    - Image tagged with the version (already published by ci.yml's `build`)
+#    - Optional Slack announcement
+#
+#  This is decoupled from deployment. To ship the release to prod, run
+#  deploy-production.yml with sha=<tag>.
+# ============================================================
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for changelog generation
+
+      - name: Generate changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          configurationJson: |
+            {
+              "categories": [
+                { "title": "## Features",      "labels": ["feat", "feature"] },
+                { "title": "## Fixes",         "labels": ["fix", "bug"] },
+                { "title": "## Security",      "labels": ["security"] },
+                { "title": "## Breaking",      "labels": ["breaking"] },
+                { "title": "## Other Changes", "labels": [] }
+              ]
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          generate_release_notes: false # we already built our own
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
+
+      - name: Tag images with version (re-tag of latest CI build)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          # `latest` is what CI pushed for main branch; re-tag it to the version.
+          for svc in api web; do
+            docker pull ghcr.io/${{ github.repository }}/$svc:latest
+            docker tag  ghcr.io/${{ github.repository }}/$svc:latest \
+                        ghcr.io/${{ github.repository }}/$svc:${{ github.ref_name }}
+            docker push ghcr.io/${{ github.repository }}/$svc:${{ github.ref_name }}
+          done
+
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,commit,author,workflow
+          custom_payload: |
+            {
+              text: "🚀 vuedine-api ${{ github.ref_name }} released"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

@@ -1,0 +1,161 @@
+# ============================================================
+#  Production deploy — manual trigger only, environment-protected.
+#
+#  Flow:
+#    1. Capture currently-deployed SHA on the host (for rollback)
+#    2. Run prisma migrate deploy
+#    3. Roll api + worker via SSH (image already in GHCR from CI)
+#    4. Smoke test with 5 retries (handles brief warm-up windows)
+#    5. Tag a Sentry release for source-map symbolication
+#    6. Notify Slack
+#    7. Auto-rollback on any failure step
+#
+#  GitHub Environment Protection Rules MUST require:
+#    - Manual approval from a reviewer (not the deployer themselves)
+#    - Wait timer (e.g. 5 minutes) for ad-hoc cancel
+#    - Restricted branches: main + tags only
+# ============================================================
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Git SHA or tag to deploy (must be in GHCR)'
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      previous_sha: ${{ steps.previous.outputs.sha }}
+    steps:
+      - name: Read currently deployed SHA from prod host
+        id: previous
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$PROD_SSH_KEY" > ~/.ssh/id
+          chmod 600 ~/.ssh/id
+          ssh-keyscan -H "$PROD_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          PREV=$(ssh -i ~/.ssh/id "deploy@$PROD_HOST" 'cat /opt/vuedine/.deployed-sha' 2>/dev/null || echo none)
+          echo "sha=$PREV" >> "$GITHUB_OUTPUT"
+          echo "Previous SHA on host: $PREV"
+
+  deploy:
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://api.vuedine.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+        working-directory: api
+
+      - name: Run migrations against production
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DB_URL }}
+        run: npx prisma migrate deploy
+        working-directory: api
+
+      - name: Pull image and roll services
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: deploy
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/vuedine
+            export IMAGE_TAG=${{ inputs.sha }}
+            docker compose pull api worker web
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+              up -d --no-deps --remove-orphans api worker web
+            echo "${{ inputs.sha }}" > /opt/vuedine/.deployed-sha
+
+      - name: Smoke test (5x retry)
+        env:
+          SMOKE_PASSWORD: ${{ secrets.PROD_SMOKE_PASSWORD }}
+        run: |
+          for i in 1 2 3 4 5; do
+            if bash api/scripts/smoke-test.sh https://api.vuedine.com; then
+              exit 0
+            fi
+            echo "Smoke attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "Smoke tests exhausted retries — failing the deploy"
+          exit 1
+
+      - name: Tag Sentry release
+        if: success()
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          npx @sentry/cli releases new "vuedine-api@${{ inputs.sha }}"
+          npx @sentry/cli releases set-commits "vuedine-api@${{ inputs.sha }}" --auto
+          npx @sentry/cli releases finalize  "vuedine-api@${{ inputs.sha }}"
+
+      - name: Notify Slack
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,commit,author,workflow,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+  rollback:
+    needs: [prepare, deploy]
+    if: failure() && needs.prepare.outputs.previous_sha != 'none'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Roll back to previous SHA
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: deploy
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/vuedine
+            export IMAGE_TAG=${{ needs.prepare.outputs.previous_sha }}
+            docker compose pull api worker web
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+              up -d --no-deps api worker web
+            echo "${{ needs.prepare.outputs.previous_sha }}" > /opt/vuedine/.deployed-sha
+
+      - name: Notify Slack of rollback
+        uses: 8398a7/action-slack@v3
+        with:
+          status: warning
+          fields: repo,commit,author,workflow
+          custom_payload: |
+            {
+              text: "⚠️ Production rollback to ${{ needs.prepare.outputs.previous_sha }} (deploy of ${{ inputs.sha }} failed)"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

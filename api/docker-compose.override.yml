@@ -1,0 +1,42 @@
+# ============================================================
+#  Auto-merged dev override.
+#
+#  `docker compose up` reads docker-compose.yml + this file together.
+#  Used to:
+#    - Mount source for hot reload (no rebuild on code edit)
+#    - Wire dev-friendly logging (debug level, pretty)
+#    - Skip the production CSP / HSTS branch
+#
+#  CI / prod runs explicitly without this file:
+#    docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# ============================================================
+
+services:
+  api:
+    # `node --watch` reloads on src/* changes. Faster than nodemon, no extra dep.
+    command: ['node', '--watch', 'src/server.js']
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+    environment:
+      LOG_LEVEL: debug
+      NODE_ENV: development
+
+  worker:
+    command: ['node', '--watch', 'src/queues/workers/index.js']
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+    environment:
+      LOG_LEVEL: debug
+      NODE_ENV: development
+
+  bull-board:
+    volumes:
+      - ./scripts:/app/scripts
+      - ./src:/app/src
+
+  # Self-signed certs for local TLS testing — comment in if you need it.
+  # nginx:
+  #   volumes:
+  #     - ./docker/nginx/dev-certs:/etc/letsencrypt/live/api.local:ro

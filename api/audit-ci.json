@@ -1,0 +1,8 @@
+{
+  "high": true,
+  "report-type": "important",
+  "skip-dev": false,
+  "package-manager": "npm",
+  "registry": "https://registry.npmjs.org",
+  "allowlist": ["GHSA-58qx-3vcg-4xpx", "GHSA-r5fr-rjxr-66jc"]
+}

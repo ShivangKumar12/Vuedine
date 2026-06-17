@@ -1,0 +1,42 @@
+{
+  "extends": ["config:recommended", ":semanticCommits", ":dependencyDashboard"],
+  "schedule": ["before 6am on Monday"],
+  "timezone": "Asia/Kolkata",
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "vulnerabilityAlerts": {
+    "labels": ["security", "high-priority"],
+    "assignees": ["@vuedine/security"],
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "description": "Group all minor/patch bumps into one weekly PR per category",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "minor and patch updates",
+      "groupSlug": "minor-patch"
+    },
+    {
+      "description": "Major bumps land as individual PRs with the changelog attached",
+      "matchUpdateTypes": ["major"],
+      "labels": ["dependencies", "breaking-change"]
+    },
+    {
+      "description": "Hold Prisma majors — runtime schema changes need careful review",
+      "matchPackageNames": ["prisma", "@prisma/client"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Hold pm2 majors — see audit-ci.json allowlist for context",
+      "matchPackageNames": ["pm2"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ],
+  "ignorePaths": ["**/node_modules/**", "**/dist/**", "**/coverage/**"]
+}

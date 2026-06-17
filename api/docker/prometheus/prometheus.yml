@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: vuedine
+    env: development
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+# Note: in dev the API/worker run on the host (not in compose), so we reach
+# them via `host.docker.internal`. In compose-managed prod, replace with the
+# service name (e.g. `api:4000`).
+scrape_configs:
+  - job_name: vuedine-api
+    metrics_path: /metrics
+    bearer_token: dev-metrics-token-change-me
+    static_configs:
+      - targets: ['host.docker.internal:4000']
+        labels:
+          component: api

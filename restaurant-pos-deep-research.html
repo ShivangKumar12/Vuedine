@@ -1,0 +1,1932 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Restaurant POS System — Deep Research & Build Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --bg2: #111118;
+    --bg3: #18181f;
+    --bg4: #1e1e28;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #e8e8f0;
+    --text2: #9090a8;
+    --text3: #5a5a72;
+    --accent: #6c63ff;
+    --accent2: #8b5cf6;
+    --orange: #f97316;
+    --green: #22c55e;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --teal: #14b8a6;
+    --pink: #ec4899;
+    --yellow: #eab308;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Sora', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15px;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    background: linear-gradient(135deg, #0a0a0f 0%, #12101e 50%, #0a0f1a 100%);
+    border-bottom: 1px solid var(--border2);
+    padding: 60px 48px 48px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -120px; left: -120px;
+    width: 480px; height: 480px;
+    background: radial-gradient(circle, rgba(108,99,255,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: -80px; right: 80px;
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(249,115,22,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(108,99,255,0.15);
+    border: 1px solid rgba(108,99,255,0.3);
+    border-radius: 100px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: #a89dff;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    margin-bottom: 24px;
+  }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); display: inline-block; }
+  .hero h1 {
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, #fff 0%, #a89dff 60%, #f97316 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero p {
+    color: var(--text2);
+    font-size: 16px;
+    max-width: 680px;
+    line-height: 1.8;
+  }
+  .hero-meta {
+    display: flex; gap: 24px; margin-top: 32px; flex-wrap: wrap;
+  }
+  .meta-tag {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .meta-tag strong { color: var(--text); font-weight: 500; }
+
+  /* ── LAYOUT ── */
+  .layout {
+    display: flex;
+    min-height: 100vh;
+  }
+  .sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    padding: 32px 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border2) transparent;
+  }
+  .sidebar-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text3);
+    padding: 0 24px 12px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 24px;
+    font-size: 13px;
+    color: var(--text2);
+    text-decoration: none;
+    transition: all 0.2s;
+    border-left: 2px solid transparent;
+    cursor: pointer;
+  }
+  .nav-item:hover { background: var(--bg3); color: var(--text); border-left-color: var(--border2); }
+  .nav-item.active { color: var(--accent); border-left-color: var(--accent); background: rgba(108,99,255,0.08); }
+  .nav-icon { font-size: 16px; width: 18px; text-align: center; }
+  .nav-divider { height: 1px; background: var(--border); margin: 12px 24px; }
+
+  .content {
+    flex: 1;
+    padding: 48px;
+    max-width: 900px;
+    overflow-x: hidden;
+  }
+
+  /* ── SECTIONS ── */
+  .section { margin-bottom: 72px; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 32px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .section-header h2 {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .section-header p {
+    font-size: 13px;
+    color: var(--text2);
+    margin-top: 2px;
+  }
+
+  /* ── CARDS ── */
+  .card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .card p { color: var(--text2); font-size: 14px; line-height: 1.7; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+
+  /* ── MODULE CARDS ── */
+  .module-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    transition: border-color 0.2s, transform 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .module-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 14px 14px 0 0;
+  }
+  .module-card:hover { border-color: var(--border2); transform: translateY(-2px); }
+  .module-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    margin-bottom: 14px;
+    text-transform: uppercase;
+  }
+  .badge-critical { background: rgba(239,68,68,0.15); color: #f87171; }
+  .badge-important { background: rgba(249,115,22,0.15); color: #fb923c; }
+  .badge-standard { background: rgba(108,99,255,0.15); color: #a89dff; }
+  .badge-advanced { background: rgba(20,184,166,0.15); color: #2dd4bf; }
+  .module-icon { font-size: 28px; margin-bottom: 12px; display: block; }
+  .module-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+  .module-card p { font-size: 13px; color: var(--text2); line-height: 1.7; margin-bottom: 14px; }
+  .feature-list { list-style: none; }
+  .feature-list li {
+    font-size: 13px;
+    color: var(--text2);
+    padding: 4px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .feature-list li::before {
+    content: '→';
+    color: var(--accent);
+    font-size: 12px;
+    margin-top: 1px;
+    flex-shrink: 0;
+  }
+
+  /* ── FLOW DIAGRAM ── */
+  .flow-diagram {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px;
+    margin-bottom: 24px;
+  }
+  .flow-row { display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; margin: 16px 0; }
+  .flow-box {
+    background: var(--bg4);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    min-width: 120px;
+    position: relative;
+  }
+  .flow-arrow {
+    color: var(--text3);
+    font-size: 18px;
+    padding: 0 8px;
+    flex-shrink: 0;
+  }
+  .flow-box.accent { background: rgba(108,99,255,0.15); border-color: rgba(108,99,255,0.4); color: #a89dff; }
+  .flow-box.orange { background: rgba(249,115,22,0.15); border-color: rgba(249,115,22,0.4); color: #fb923c; }
+  .flow-box.green { background: rgba(34,197,94,0.15); border-color: rgba(34,197,94,0.4); color: #4ade80; }
+  .flow-box.blue { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.4); color: #60a5fa; }
+  .flow-box.teal { background: rgba(20,184,166,0.15); border-color: rgba(20,184,166,0.4); color: #2dd4bf; }
+  .flow-label { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+  /* ── COMPETITOR TABLE ── */
+  .comp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 16px;
+  }
+  .comp-table th {
+    background: var(--bg4);
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--text2);
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border2);
+  }
+  .comp-table th:first-child { border-radius: 10px 0 0 0; }
+  .comp-table th:last-child { border-radius: 0 10px 0 0; }
+  .comp-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text2);
+    vertical-align: top;
+  }
+  .comp-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .comp-table td:first-child { font-weight: 500; color: var(--text); }
+  .yes { color: var(--green); font-weight: 500; }
+  .no { color: var(--red); font-weight: 500; }
+  .partial { color: var(--yellow); font-weight: 500; }
+
+  /* ── TECH STACK ── */
+  .tech-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 10px;
+  }
+  .tech-layer {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text3);
+    width: 100px;
+    flex-shrink: 0;
+  }
+  .tech-name {
+    font-weight: 600;
+    color: var(--text);
+    font-size: 14px;
+    flex: 1;
+  }
+  .tech-reason { font-size: 12px; color: var(--text2); }
+  .tech-icon { font-size: 22px; width: 36px; text-align: center; }
+
+  /* ── HIGHLIGHT BOX ── */
+  .highlight {
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+    border-left: 3px solid;
+  }
+  .highlight.info { background: rgba(59,130,246,0.08); border-color: var(--blue); }
+  .highlight.warning { background: rgba(234,179,8,0.08); border-color: var(--yellow); }
+  .highlight.success { background: rgba(34,197,94,0.08); border-color: var(--green); }
+  .highlight.danger { background: rgba(239,68,68,0.08); border-color: var(--red); }
+  .highlight-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .highlight.info .highlight-title { color: #60a5fa; }
+  .highlight.warning .highlight-title { color: #fbbf24; }
+  .highlight.success .highlight-title { color: #4ade80; }
+  .highlight.danger .highlight-title { color: #f87171; }
+  .highlight p { font-size: 13px; color: var(--text2); }
+
+  /* ── QR STEP FLOW ── */
+  .qr-steps { display: flex; flex-direction: column; gap: 0; }
+  .qr-step {
+    display: flex;
+    gap: 20px;
+    padding: 20px 0;
+    position: relative;
+  }
+  .qr-step:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    left: 19px;
+    top: 56px;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--border2), var(--border));
+  }
+  .step-num {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    flex-shrink: 0;
+    z-index: 1;
+  }
+  .step-content h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .step-content p { font-size: 13px; color: var(--text2); line-height: 1.7; }
+
+  /* ── PRICING ── */
+  .price-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s;
+  }
+  .price-card:hover { transform: translateY(-4px); }
+  .price-card.featured {
+    border-color: rgba(108,99,255,0.4);
+    background: rgba(108,99,255,0.06);
+  }
+  .price-card.featured::before {
+    content: 'RECOMMENDED';
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 4px 16px;
+    border-radius: 0 0 8px 8px;
+  }
+  .price-tier { font-size: 12px; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .price-amt { font-size: 32px; font-weight: 700; color: var(--text); }
+  .price-period { font-size: 13px; color: var(--text3); }
+  .price-features { list-style: none; margin-top: 20px; text-align: left; }
+  .price-features li {
+    font-size: 13px;
+    color: var(--text2);
+    padding: 5px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .price-features li span { color: var(--green); }
+
+  /* ── DATABASE SCHEMA ── */
+  .schema-box {
+    background: var(--bg4);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+  .schema-header {
+    background: rgba(108,99,255,0.15);
+    border-bottom: 1px solid var(--border2);
+    padding: 8px 16px;
+    font-weight: 600;
+    color: #a89dff;
+  }
+  .schema-row {
+    display: flex;
+    padding: 5px 16px;
+    gap: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .schema-field { color: var(--text2); flex: 1; }
+  .schema-type { color: var(--teal); width: 90px; flex-shrink: 0; }
+  .schema-pk { color: var(--yellow); font-size: 10px; }
+
+  /* ── COMPETITIVE ADVANTAGE ── */
+  .adv-item {
+    display: flex;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .adv-item:last-child { border-bottom: none; }
+  .adv-vs {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  .adv-chip {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-weight: 500;
+  }
+  .chip-them { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+  .chip-you { background: rgba(34,197,94,0.1); color: #4ade80; border: 1px solid rgba(34,197,94,0.2); }
+
+  /* ── SUMMARY STATS ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  .stat-box {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+  }
+  .stat-num { font-size: 28px; font-weight: 700; display: block; }
+  .stat-label { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* colors for module cards */
+  .m-qr::before { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .m-billing::before { background: linear-gradient(90deg, var(--orange), #f59e0b); }
+  .m-kot::before { background: linear-gradient(90deg, var(--red), var(--pink)); }
+  .m-kds::before { background: linear-gradient(90deg, var(--teal), var(--green)); }
+  .m-table::before { background: linear-gradient(90deg, var(--blue), var(--teal)); }
+  .m-menu::before { background: linear-gradient(90deg, var(--pink), var(--accent)); }
+  .m-inventory::before { background: linear-gradient(90deg, var(--green), var(--teal)); }
+  .m-crm::before { background: linear-gradient(90deg, var(--yellow), var(--orange)); }
+  .m-report::before { background: linear-gradient(90deg, var(--blue), var(--accent)); }
+  .m-payment::before { background: linear-gradient(90deg, var(--green), var(--blue)); }
+  .m-waiter::before { background: linear-gradient(90deg, var(--orange), var(--red)); }
+  .m-aggr::before { background: linear-gradient(90deg, var(--teal), var(--blue)); }
+  .m-staff::before { background: linear-gradient(90deg, var(--pink), var(--red)); }
+  .m-multi::before { background: linear-gradient(90deg, var(--accent), var(--blue)); }
+
+  @media (max-width: 900px) {
+    .layout { flex-direction: column; }
+    .sidebar { width: 100%; height: auto; position: static; }
+    .content { padding: 24px; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: 1fr 1fr; }
+    .hero { padding: 32px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-badge"><span class="dot"></span> Deep Research Document · 2025–26</div>
+  <h1>Restaurant POS System<br>Complete Build Guide</h1>
+  <p>Everything you need to build a competitive, QR-based Restaurant POS System — from architecture to every mandatory feature — benchmarked against Petpooja, the #1 competitor in India.</p>
+  <div class="hero-meta">
+    <div class="meta-tag">🏆 Competitor: <strong>Petpooja (1,00,000+ outlets)</strong></div>
+    <div class="meta-tag">📱 Core USP: <strong>QR-Based Ordering</strong></div>
+    <div class="meta-tag">🧩 Modules: <strong>15+ Core Features</strong></div>
+    <div class="meta-tag">🌐 Market: <strong>India F&B (₹multi-crore)</strong></div>
+  </div>
+</div>
+
+<div class="layout">
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-title">Contents</div>
+  <a class="nav-item active" href="#overview"><span class="nav-icon">📊</span> What is POS?</a>
+  <a class="nav-item" href="#architecture"><span class="nav-icon">🏗️</span> System Architecture</a>
+  <a class="nav-item" href="#qr"><span class="nav-icon">📱</span> QR Ordering System</a>
+  <div class="nav-divider"></div>
+  <div class="sidebar-title">Core Modules</div>
+  <a class="nav-item" href="#billing"><span class="nav-icon">🧾</span> Billing & KOT</a>
+  <a class="nav-item" href="#kds"><span class="nav-icon">📺</span> Kitchen Display (KDS)</a>
+  <a class="nav-item" href="#tables"><span class="nav-icon">🪑</span> Table Management</a>
+  <a class="nav-item" href="#menu"><span class="nav-icon">🍽️</span> Menu Management</a>
+  <a class="nav-item" href="#inventory"><span class="nav-icon">📦</span> Inventory & Stock</a>
+  <a class="nav-item" href="#crm"><span class="nav-icon">👥</span> CRM & Loyalty</a>
+  <a class="nav-item" href="#payments"><span class="nav-icon">💳</span> Payments & GST</a>
+  <a class="nav-item" href="#waiter"><span class="nav-icon">🤵</span> Captain/Waiter App</a>
+  <a class="nav-item" href="#aggregator"><span class="nav-icon">🛵</span> Aggregator Integration</a>
+  <a class="nav-item" href="#reports"><span class="nav-icon">📈</span> Reports & Analytics</a>
+  <a class="nav-item" href="#staff"><span class="nav-icon">👷</span> Staff Management</a>
+  <a class="nav-item" href="#multi"><span class="nav-icon">🏬</span> Multi-outlet</a>
+  <div class="nav-divider"></div>
+  <a class="nav-item" href="#competitor"><span class="nav-icon">⚔️</span> Petpooja Analysis</a>
+  <a class="nav-item" href="#techstack"><span class="nav-icon">⚙️</span> Tech Stack</a>
+  <a class="nav-item" href="#database"><span class="nav-icon">🗄️</span> Database Schema</a>
+  <a class="nav-item" href="#strategy"><span class="nav-icon">🚀</span> Competitive Strategy</a>
+</nav>
+
+<!-- MAIN CONTENT -->
+<main class="content">
+
+<!-- 1. WHAT IS POS -->
+<section class="section" id="overview">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(108,99,255,0.15)">📊</div>
+    <div>
+      <h2>What is a Restaurant POS System?</h2>
+      <p>Foundation concepts you must understand before building</p>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-box"><span class="stat-num" style="color:var(--accent)">₹10K</span><div class="stat-label">Petpooja Annual Price</div></div>
+    <div class="stat-box"><span class="stat-num" style="color:var(--orange)">1L+</span><div class="stat-label">Petpooja Outlets</div></div>
+    <div class="stat-box"><span class="stat-num" style="color:var(--green)">40%</span><div class="stat-label">Diners prefer QR ordering</div></div>
+    <div class="stat-box"><span class="stat-num" style="color:var(--teal)">80+</span><div class="stat-label">Reports Petpooja provides</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🏪 POS = Point of Sale</div>
+    <p>A Restaurant POS (Point of Sale) system is the <strong style="color:var(--text)">central nervous system</strong> of a restaurant. It connects every operation — customer ordering → kitchen preparation → billing → payment — into one unified, automated flow. Unlike a simple billing machine, modern POS systems are cloud-based software platforms that manage the entire restaurant lifecycle from a single screen.</p>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔄 How a Single Order Triggers the Whole System</div>
+    <p>When a customer places an order (via QR code, waiter app, or counter), ONE transaction simultaneously: deducts ingredients from inventory, prints/displays KOT in kitchen, updates the table status, adds to sales reports, records customer data in CRM, and syncs to accounting. This is why a POS is not just software — it's infrastructure.</p>
+  </div>
+
+  <div class="highlight info">
+    <div class="highlight-title">💡 Why Restaurants Need Your System</div>
+    <p>India has 7.5 million+ food businesses. Most still use manual billing or outdated systems. The rise of QR-based contactless ordering post-COVID created massive demand. Your target: restaurants that want to eliminate dependency on waiters for order-taking, reduce errors, speed up service, and get real-time analytics — all in one affordable platform.</p>
+  </div>
+
+  <div class="grid-2" style="margin-top:16px">
+    <div class="card">
+      <div class="card-title">🏨 Target Restaurant Types</div>
+      <ul class="feature-list">
+        <li>Fine Dining Restaurants</li>
+        <li>Quick Service Restaurants (QSR)</li>
+        <li>Cafes & Coffee Shops</li>
+        <li>Bars & Pubs</li>
+        <li>Food Courts</li>
+        <li>Cloud Kitchens</li>
+        <li>Bakeries & Dessert Outlets</li>
+        <li>Hotel Restaurants</li>
+        <li>Dhaba / Casual Dining</li>
+        <li>Multi-outlet Restaurant Chains</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">😫 Problems Your System Solves</div>
+      <ul class="feature-list">
+        <li>Wrong orders due to verbal miscommunication</li>
+        <li>Long wait times for menus & ordering</li>
+        <li>Manual billing errors & fraud</li>
+        <li>No real-time stock visibility</li>
+        <li>Disconnected Zomato/Swiggy orders</li>
+        <li>No customer loyalty tracking</li>
+        <li>Paper-based kitchen confusion</li>
+        <li>GST calculation mistakes</li>
+        <li>Staff pilferage & theft</li>
+        <li>Zero business analytics</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 2. ARCHITECTURE -->
+<section class="section" id="architecture">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(59,130,246,0.15)">🏗️</div>
+    <div>
+      <h2>System Architecture</h2>
+      <p>How all parts of your POS connect to each other</p>
+    </div>
+  </div>
+
+  <div class="flow-diagram">
+    <p style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:20px;letter-spacing:1px;text-transform:uppercase">Complete System Data Flow</p>
+
+    <!-- Customer Layer -->
+    <p style="font-size:11px;color:var(--text3);margin-bottom:8px;text-align:center">CUSTOMER INPUTS</p>
+    <div class="flow-row">
+      <div class="flow-box accent">📱 QR Menu<div class="flow-label">Scan & Order</div></div>
+      <div class="flow-arrow">⟵</div>
+      <div class="flow-box blue">🤵 Waiter App<div class="flow-label">Captain Order</div></div>
+      <div class="flow-arrow">⟶</div>
+      <div class="flow-box orange">🛵 Aggregator<div class="flow-label">Zomato/Swiggy</div></div>
+    </div>
+
+    <!-- Arrow Down -->
+    <div style="text-align:center;font-size:24px;color:var(--border2);margin:8px 0">↓</div>
+
+    <!-- Core POS -->
+    <div class="flow-row">
+      <div class="flow-box" style="background:rgba(108,99,255,0.25);border-color:rgba(108,99,255,0.5);min-width:320px;padding:16px 24px">
+        <div style="font-size:16px;margin-bottom:4px">⚙️ Core POS Engine</div>
+        <div style="font-size:11px;color:var(--text2)">Order Management · Billing · Table State · GST · KOT Generator</div>
+      </div>
+    </div>
+
+    <div style="text-align:center;font-size:24px;color:var(--border2);margin:8px 0">↓</div>
+
+    <!-- Processing Layer -->
+    <p style="font-size:11px;color:var(--text3);margin-bottom:8px;text-align:center">REAL-TIME PROCESSING</p>
+    <div class="flow-row">
+      <div class="flow-box teal">📺 KDS<div class="flow-label">Kitchen Display</div></div>
+      <div class="flow-arrow">·</div>
+      <div class="flow-box green">📦 Inventory<div class="flow-label">Auto-deduct</div></div>
+      <div class="flow-arrow">·</div>
+      <div class="flow-box" style="background:rgba(236,72,153,0.15);border-color:rgba(236,72,153,0.4);color:#f472b6">👥 CRM<div class="flow-label">Customer Data</div></div>
+      <div class="flow-arrow">·</div>
+      <div class="flow-box orange">💳 Payment<div class="flow-label">UPI/Card/Cash</div></div>
+    </div>
+
+    <div style="text-align:center;font-size:24px;color:var(--border2);margin:8px 0">↓</div>
+
+    <!-- Admin Layer -->
+    <p style="font-size:11px;color:var(--text3);margin-bottom:8px;text-align:center">OWNER / ADMIN LAYER</p>
+    <div class="flow-row">
+      <div class="flow-box blue">📈 Analytics<div class="flow-label">80+ Reports</div></div>
+      <div class="flow-arrow">·</div>
+      <div class="flow-box accent">🏬 Multi-outlet<div class="flow-label">Central Dashboard</div></div>
+      <div class="flow-arrow">·</div>
+      <div class="flow-box green">👷 Staff Mgmt<div class="flow-label">Roles & Shifts</div></div>
+    </div>
+  </div>
+
+  <div class="highlight info">
+    <div class="highlight-title">🔑 The 5 Core Layers of Your System</div>
+    <p><strong style="color:var(--text)">Layer 1 — Customer Interface:</strong> QR Web App (no app download), Aggregator portal<br>
+    <strong style="color:var(--text)">Layer 2 — Staff Interface:</strong> Captain/Waiter App (Android), POS Terminal/Counter<br>
+    <strong style="color:var(--text)">Layer 3 — Kitchen Interface:</strong> Kitchen Display System (KDS), KOT Printer<br>
+    <strong style="color:var(--text)">Layer 4 — Business Engine:</strong> POS Server (Cloud + Offline), Inventory Engine, Billing Engine<br>
+    <strong style="color:var(--text)">Layer 5 — Admin Interface:</strong> Web Dashboard, Mobile Owner App, Analytics & Reports</p>
+  </div>
+</section>
+
+<!-- 3. QR ORDERING -->
+<section class="section" id="qr">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(108,99,255,0.15)">📱</div>
+    <div>
+      <h2>QR-Based Ordering System</h2>
+      <p>Your #1 feature — the complete end-to-end flow explained</p>
+    </div>
+  </div>
+
+  <div class="highlight success">
+    <div class="highlight-title">✅ Your Core Innovation: No App Download Required</div>
+    <p>Customer scans QR code with their phone camera → Browser opens instantly → Full menu loads → Customer orders → Order lands on restaurant POS panel. Zero friction. Works on any smartphone. No Android/iOS app install needed. This is the exact model customers want in 2025.</p>
+  </div>
+
+  <div class="qr-steps">
+    <div class="qr-step">
+      <div class="step-num" style="background:rgba(108,99,255,0.2);color:var(--accent)">1</div>
+      <div class="step-content">
+        <h4>QR Code Generation (Per Table)</h4>
+        <p>Your system generates a <strong style="color:var(--text)">unique QR code for every table</strong> in the restaurant. Each QR encodes a URL like: <code style="background:var(--bg4);padding:2px 8px;border-radius:4px;font-size:12px">https://menu.yourapp.com/r/{restaurantId}/t/{tableId}</code>. This URL contains both the restaurant identity and the table number. QR codes are printable on standees, table mats, tent cards, or stickers. The restaurant owner can regenerate QR codes anytime from the admin panel.</p>
+      </div>
+    </div>
+    <div class="qr-step">
+      <div class="step-num" style="background:rgba(249,115,22,0.2);color:var(--orange)">2</div>
+      <div class="step-content">
+        <h4>Customer Scans — Menu Opens in Browser</h4>
+        <p>Customer points their phone camera at the QR code. The phone recognizes it and opens a <strong style="color:var(--text)">Progressive Web App (PWA)</strong> in the browser — no app installation required. The menu loads with restaurant branding, food photos, categories, prices, and item descriptions. The page is fully mobile-optimized and supports Veg/Non-Veg filters, dietary tags, bestseller highlights, and search functionality.</p>
+      </div>
+    </div>
+    <div class="qr-step">
+      <div class="step-num" style="background:rgba(34,197,94,0.2);color:var(--green)">3</div>
+      <div class="step-content">
+        <h4>Customer Browses & Adds to Cart</h4>
+        <p>Customer scrolls through menu categories, taps items, sees descriptions & photos, selects quantities, chooses add-ons/variants (spice level, size, toppings), and adds special instructions. A <strong style="color:var(--text)">sticky cart button</strong> shows running total. Customer can modify the cart freely before placing order. No login required — completely anonymous session.</p>
+      </div>
+    </div>
+    <div class="qr-step">
+      <div class="step-num" style="background:rgba(20,184,166,0.2);color:var(--teal)">4</div>
+      <div class="step-content">
+        <h4>Order Placed — Instant Confirmation</h4>
+        <p>Customer taps "Place Order". The app sends the order via <strong style="color:var(--text)">WebSocket or REST API</strong> to your backend. The customer sees an animated "Order Placed! ✅" screen with order number and estimated time. They can continue adding more items. Multiple rounds of ordering from the same table are fully supported — each round creates a new KOT that gets added to the running bill.</p>
+      </div>
+    </div>
+    <div class="qr-step">
+      <div class="step-num" style="background:rgba(59,130,246,0.2);color:var(--blue)">5</div>
+      <div class="step-content">
+        <h4>Order Appears on Restaurant Panel (Live)</h4>
+        <p>Simultaneously, the order appears on the <strong style="color:var(--text)">Restaurant Admin Panel</strong> (desktop/tablet) with table number, items ordered, quantities, and special instructions. A <strong style="color:var(--text)">notification sound/alert</strong> triggers. The waiter sees the table is now "active". The POS staff can accept the order (or it auto-accepts based on settings).</p>
+      </div>
+    </div>
+    <div class="qr-step">
+      <div class="step-num" style="background:rgba(236,72,153,0.2);color:var(--pink)">6</div>
+      <div class="step-content">
+        <h4>KOT Fires to Kitchen</h4>
+        <p>The system automatically generates a <strong style="color:var(--text)">Kitchen Order Ticket (KOT)</strong> with table number, order time, items, and special notes. This KOT either: (a) <strong style="color:var(--text)">prints on a kitchen printer</strong>, or (b) displays on the <strong style="color:var(--text)">Kitchen Display System (KDS)</strong> screen, or (c) both. Items can be routed to different stations — hot kitchen, cold kitchen, bar — based on category.</p>
+      </div>
+    </div>
+    <div class="qr-step">
+      <div class="step-num" style="background:rgba(234,179,8,0.2);color:var(--yellow)">7</div>
+      <div class="step-content">
+        <h4>Food Served — Bill Generated</h4>
+        <p>Kitchen marks items as "Ready". Waiter delivers food. Customer can request bill via the QR menu ("Request Bill" button) or waiter prints it. The POS generates a <strong style="color:var(--text)">GST-compliant bill</strong> with itemized charges, applicable taxes (CGST/SGST/IGST), discounts, service charge, and total. Supports digital bill via WhatsApp/SMS.</p>
+      </div>
+    </div>
+    <div class="qr-step">
+      <div class="step-num" style="background:rgba(34,197,94,0.2);color:var(--green)">8</div>
+      <div class="step-content">
+        <h4>Payment — Multiple Modes</h4>
+        <p>Customer pays via Cash, Card (Razorpay/PayU/Stripe), UPI (GPay/PhonePe/Paytm), or <strong style="color:var(--text)">online payment via the QR menu itself</strong> (scan QR on bill → pay directly). Bill is settled, table is freed automatically. Payment record syncs to reports, inventory deductions are confirmed, and CRM is updated with customer visit data.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:24px">
+    <div class="card-title">📋 QR Menu — Full Feature List</div>
+    <div class="grid-2" style="margin-top:12px">
+      <ul class="feature-list">
+        <li>Restaurant logo & branding</li>
+        <li>Food photos with descriptions</li>
+        <li>Veg 🟢 / Non-Veg 🔴 indicators</li>
+        <li>Category-wise browsing</li>
+        <li>Search by item name</li>
+        <li>Item availability toggle (live)</li>
+        <li>Portion size variants</li>
+        <li>Add-ons & customizations</li>
+        <li>Special instructions field</li>
+        <li>Bestseller / Chef's special tags</li>
+      </ul>
+      <ul class="feature-list">
+        <li>Multi-language menu support</li>
+        <li>Cart with quantity controls</li>
+        <li>Order history for the session</li>
+        <li>Estimated preparation time</li>
+        <li>Call waiter button</li>
+        <li>Request bill button</li>
+        <li>Allergy info / dietary tags</li>
+        <li>Calorie info (optional)</li>
+        <li>Combo/set menu display</li>
+        <li>Online payment via menu</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 4. BILLING & KOT -->
+<section class="section" id="billing">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(249,115,22,0.15)">🧾</div>
+    <div>
+      <h2>Billing & KOT System</h2>
+      <p>The financial backbone — mandatory, must be fast and error-free</p>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="module-card m-billing">
+      <div class="module-badge badge-critical">🔴 Critical</div>
+      <span class="module-icon">🧾</span>
+      <h3>GST-Compliant Billing</h3>
+      <p>Every bill must follow India's GST rules — the most important legal requirement for restaurant POS in India.</p>
+      <ul class="feature-list">
+        <li>Auto CGST (2.5%) + SGST (2.5%) = 5% GST</li>
+        <li>IGST for inter-state (12%/18% where applicable)</li>
+        <li>Service charge (optional, configurable)</li>
+        <li>Discount on item or bill level</li>
+        <li>Split bill between multiple customers</li>
+        <li>Merge bills from multiple tables</li>
+        <li>Bill edit after creation (with authorization)</li>
+        <li>Cancel bill with reason logging</li>
+        <li>KOT-to-Bill linking</li>
+        <li>Support 200+ printers (thermal/dot matrix)</li>
+      </ul>
+    </div>
+    <div class="module-card m-kot">
+      <div class="module-badge badge-critical">🔴 Critical</div>
+      <span class="module-icon">🎫</span>
+      <h3>KOT — Kitchen Order Ticket</h3>
+      <p>KOT is the instruction slip sent to the kitchen. Speed and accuracy of KOT determines how fast food reaches the customer.</p>
+      <ul class="feature-list">
+        <li>Auto-generate KOT on order placement</li>
+        <li>Print to kitchen printer instantly</li>
+        <li>Display on KDS screen (if no printer)</li>
+        <li>Category-wise KOT routing (hot/cold/bar)</li>
+        <li>Add items to existing KOT (running order)</li>
+        <li>Cancel items with reason</li>
+        <li>KOT re-print if paper jams</li>
+        <li>Time-stamp on every KOT</li>
+        <li>Table number & waiter name on KOT</li>
+        <li>Special instructions printed in red</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">🔢 Bill Management Operations</div>
+    <div class="grid-3" style="margin-top:12px">
+      <ul class="feature-list">
+        <li>Split bill (by item or equal)</li>
+        <li>Merge tables into one bill</li>
+        <li>Transfer table mid-service</li>
+        <li>Complimentary items (with auth)</li>
+      </ul>
+      <ul class="feature-list">
+        <li>Flat / % discount on bill</li>
+        <li>Coupon / promo code apply</li>
+        <li>Loyalty points redemption</li>
+        <li>Round-off adjustments</li>
+      </ul>
+      <ul class="feature-list">
+        <li>Digital bill via WhatsApp/SMS</li>
+        <li>Bill reprint any time</li>
+        <li>Day-end cash register report</li>
+        <li>Settle with multiple payment modes</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 5. KDS -->
+<section class="section" id="kds">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(20,184,166,0.15)">📺</div>
+    <div>
+      <h2>Kitchen Display System (KDS)</h2>
+      <p>Digital replacement for paper KOTs — the smart kitchen brain</p>
+    </div>
+  </div>
+
+  <div class="module-card m-kds" style="margin-bottom:16px">
+    <div class="module-badge badge-important">🟠 Important</div>
+    <span class="module-icon">📺</span>
+    <h3>What is KDS and Why You Need It</h3>
+    <p>KDS replaces paper KOT slips with a digital screen in the kitchen. Orders appear instantly on a monitor, chefs tap items as they're prepared, and the system tracks timing. It eliminates paper waste, reduces confusion, speeds up kitchen operations, and allows management to track kitchen efficiency in real-time.</p>
+    <div class="grid-2" style="margin-top:12px">
+      <ul class="feature-list">
+        <li>Orders display with table number & time</li>
+        <li>Color-coding: new (green) → preparing (yellow) → done (grey)</li>
+        <li>Sound alert for new orders</li>
+        <li>Tap to mark item as "done"</li>
+        <li>Timer shows how long each order has been waiting</li>
+        <li>Priority flags for rush orders</li>
+      </ul>
+      <ul class="feature-list">
+        <li>Station-wise display (hot, cold, bar)</li>
+        <li>Multiple KDS screens supported</li>
+        <li>Works on any Android tablet/TV</li>
+        <li>Bump bar support for chef ergonomics</li>
+        <li>Kitchen performance reports (avg time)</li>
+        <li>Offline mode — works without internet</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="highlight warning">
+    <div class="highlight-title">⚠️ KDS vs Printer — Give Restaurants the Choice</div>
+    <p>Some restaurants prefer physical KOT printers (traditional, familiar, no electricity concern). Others prefer KDS screens (eco-friendly, real-time updates). Your system must support BOTH simultaneously. Large restaurants may have a printer AND a KDS screen in the same kitchen. Never force one option.</p>
+  </div>
+</section>
+
+<!-- 6. TABLE MANAGEMENT -->
+<section class="section" id="tables">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(59,130,246,0.15)">🪑</div>
+    <div>
+      <h2>Table Management</h2>
+      <p>Visual floor plan — know every table's status in real-time</p>
+    </div>
+  </div>
+
+  <div class="module-card m-table">
+    <div class="module-badge badge-critical">🔴 Critical</div>
+    <span class="module-icon">🗺️</span>
+    <h3>Visual Table Floor Plan</h3>
+    <p>The admin panel shows a bird's-eye view of the restaurant floor with all tables color-coded by their current status. This is one of the most-used screens in the POS — waiters and managers glance at it constantly to understand restaurant state.</p>
+    <div class="grid-2" style="margin-top:12px">
+      <div>
+        <p style="margin-bottom:8px"><strong style="color:var(--text)">Table Status Colors:</strong></p>
+        <ul class="feature-list">
+          <li><span style="color:var(--green)">🟢 Green</span> — Table is free</li>
+          <li><span style="color:var(--red)">🔴 Red</span> — Table is occupied, order running</li>
+          <li><span style="color:var(--yellow)">🟡 Yellow</span> — Bill generated, waiting payment</li>
+          <li><span style="color:var(--blue)">🔵 Blue</span> — Table reserved / pre-booked</li>
+          <li><span style="color:var(--orange)">🟠 Orange</span> — Cleaning in progress</li>
+        </ul>
+      </div>
+      <div>
+        <p style="margin-bottom:8px"><strong style="color:var(--text)">Table Operations:</strong></p>
+        <ul class="feature-list">
+          <li>Create sections (Indoor, Outdoor, Terrace)</li>
+          <li>Add/remove tables from floor plan</li>
+          <li>Table shape & capacity (2-seater, 4-seater)</li>
+          <li>Merge adjacent tables</li>
+          <li>Transfer order to another table</li>
+          <li>Table reservation & pre-booking</li>
+          <li>Waitlist management</li>
+          <li>Table time tracking (how long occupied)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. MENU MANAGEMENT -->
+<section class="section" id="menu">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(236,72,153,0.15)">🍽️</div>
+    <div>
+      <h2>Menu Management</h2>
+      <p>Flexible, digital menu control — update anything in real-time</p>
+    </div>
+  </div>
+
+  <div class="module-card m-menu">
+    <div class="module-badge badge-critical">🔴 Critical</div>
+    <span class="module-icon">📋</span>
+    <h3>Complete Menu Control</h3>
+    <p>The menu is the heart of the customer experience. Your system must allow restaurant owners to create, customize, and update menus instantly — and have those changes reflect on the QR ordering app in real-time without any technical knowledge required.</p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">📁 Menu Structure</div>
+      <ul class="feature-list">
+        <li>Categories (Starters, Main Course, Desserts)</li>
+        <li>Sub-categories (Veg Starters, Non-Veg Starters)</li>
+        <li>Items with name, description, price</li>
+        <li>Food photos upload per item</li>
+        <li>Veg / Non-Veg / Jain / Vegan tags</li>
+        <li>Bestseller / New / Chef Special badges</li>
+        <li>Spicy level indicator 🌶️</li>
+        <li>Allergen information</li>
+        <li>Calorie count (optional)</li>
+        <li>Item-level GST configuration</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">⚙️ Menu Operations</div>
+      <ul class="feature-list">
+        <li>Toggle item ON/OFF instantly (sold out)</li>
+        <li>Bulk import via Excel/CSV</li>
+        <li>Variants (Half / Full, Small / Medium / Large)</li>
+        <li>Add-ons & extras (extra cheese, etc.)</li>
+        <li>Combo / Set meals</li>
+        <li>Time-based menu (Breakfast/Lunch/Dinner)</li>
+        <li>Separate Dine-in vs Delivery menu</li>
+        <li>Price override per order type</li>
+        <li>QR menu syncs instantly on change</li>
+        <li>Multi-outlet menu sync</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 8. INVENTORY -->
+<section class="section" id="inventory">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(34,197,94,0.15)">📦</div>
+    <div>
+      <h2>Inventory & Stock Management</h2>
+      <p>Know exactly what's in your kitchen at all times — prevent wastage and stockouts</p>
+    </div>
+  </div>
+
+  <div class="module-card m-inventory">
+    <div class="module-badge badge-important">🟠 Important</div>
+    <span class="module-icon">📦</span>
+    <h3>Smart Inventory Engine</h3>
+    <p>Every time an order is placed, the system automatically deducts the raw materials used from stock — based on the recipe defined for each dish. No manual stock tracking needed. The system tells you when you're running low, helps you order from suppliers, and tracks wastage.</p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">🥦 Raw Material Tracking</div>
+      <ul class="feature-list">
+        <li>Add raw materials (chicken, oil, rice, spices)</li>
+        <li>Define unit of measurement (kg, litre, piece)</li>
+        <li>Set minimum stock alert threshold</li>
+        <li>Auto-deduct when dish is ordered</li>
+        <li>Recipe management (each dish = list of ingredients)</li>
+        <li>Multi-stage recipes (base sauce → dish)</li>
+        <li>Food wastage tracking</li>
+        <li>Supplier management</li>
+        <li>Purchase order generation</li>
+        <li>Stock-in entries from purchases</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 Inventory Reports</div>
+      <ul class="feature-list">
+        <li>Current stock levels dashboard</li>
+        <li>Low stock alerts (push notification)</li>
+        <li>Daily consumption report</li>
+        <li>Wastage report by period</li>
+        <li>Purchase vs consumption analysis</li>
+        <li>Food cost % per dish</li>
+        <li>Gross margin per item</li>
+        <li>Slow-moving items report</li>
+        <li>Stock valuation report</li>
+        <li>Supplier-wise purchase history</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="highlight info">
+    <div class="highlight-title">💡 Recipe Management = Cost Control</div>
+    <p>Define: "1 plate Butter Chicken = 200g chicken + 50g butter + 30g cream + spices". Every time this dish is sold, the system deducts these exact quantities from stock. This gives the owner real-time food cost data, catches pilferage (theoretical vs actual consumption gap), and prevents running out of key ingredients during service.</p>
+  </div>
+</section>
+
+<!-- 9. CRM & LOYALTY -->
+<section class="section" id="crm">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(234,179,8,0.15)">👥</div>
+    <div>
+      <h2>CRM & Loyalty Program</h2>
+      <p>Remember your customers — bring them back again and again</p>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="module-card m-crm">
+      <div class="module-badge badge-standard">🟣 Standard</div>
+      <span class="module-icon">👤</span>
+      <h3>Customer Database (CRM)</h3>
+      <p>Every customer who pays or orders becomes part of your restaurant's database. Track their preferences, order history, and spending patterns.</p>
+      <ul class="feature-list">
+        <li>Customer profile (name, phone, email)</li>
+        <li>Complete order history per customer</li>
+        <li>Favorite items tracking</li>
+        <li>Average spend per visit</li>
+        <li>Visit frequency tracking</li>
+        <li>Birthday & anniversary capture</li>
+        <li>Customer segmentation (VIP, Regular, New)</li>
+        <li>Feedback collection</li>
+        <li>Blacklist problematic customers</li>
+      </ul>
+    </div>
+    <div class="module-card m-crm">
+      <div class="module-badge badge-standard">🟣 Standard</div>
+      <span class="module-icon">⭐</span>
+      <h3>Loyalty & Rewards Program</h3>
+      <p>Keep customers coming back with a points-based loyalty system. Reward repeat visits and high spenders.</p>
+      <ul class="feature-list">
+        <li>Earn X points per ₹100 spent</li>
+        <li>Redeem points on future bills</li>
+        <li>Loyalty tiers (Silver, Gold, Platinum)</li>
+        <li>Birthday/anniversary bonus points</li>
+        <li>Referral rewards</li>
+        <li>Points expiry settings</li>
+        <li>Loyalty wallet balance on bill</li>
+        <li>SMS/WhatsApp point updates</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">📣 Marketing & Communication Tools</div>
+    <div class="grid-3" style="margin-top:12px">
+      <ul class="feature-list">
+        <li>Bulk SMS campaigns</li>
+        <li>WhatsApp broadcast messages</li>
+        <li>Birthday greetings automation</li>
+        <li>Festival offers auto-send</li>
+      </ul>
+      <ul class="feature-list">
+        <li>Coupon code generation</li>
+        <li>Happy hour discounts</li>
+        <li>BOGO (buy 1 get 1) offers</li>
+        <li>Minimum order discount</li>
+      </ul>
+      <ul class="feature-list">
+        <li>Post-meal feedback request</li>
+        <li>Google Review redirect</li>
+        <li>Star rating collection</li>
+        <li>Customer re-engagement campaigns</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 10. PAYMENTS & GST -->
+<section class="section" id="payments">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(34,197,94,0.15)">💳</div>
+    <div>
+      <h2>Payments & GST Compliance</h2>
+      <p>Accept every payment mode — stay 100% GST compliant</p>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">💰 Payment Modes to Support</div>
+      <ul class="feature-list">
+        <li>Cash (with change calculation)</li>
+        <li>Credit/Debit Card (via POS machine)</li>
+        <li>UPI — GPay, PhonePe, Paytm, BHIM</li>
+        <li>QR-based UPI on bill (scan to pay)</li>
+        <li>Razorpay Payment Link</li>
+        <li>Wallet (Paytm wallet, etc.)</li>
+        <li>Loyalty Points redemption</li>
+        <li>Complimentary / Management discount</li>
+        <li>Split payment (part cash + part UPI)</li>
+        <li>Online prepayment via QR menu</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">📋 GST Configuration</div>
+      <ul class="feature-list">
+        <li>Restaurant's GSTIN entry</li>
+        <li>Item-wise GST slab (5%, 12%, 18%)</li>
+        <li>Auto CGST + SGST split</li>
+        <li>IGST for inter-state orders</li>
+        <li>Service charge (non-GST, configurable)</li>
+        <li>GST invoice generation</li>
+        <li>GST summary report (monthly)</li>
+        <li>GSTR-1 compatible export</li>
+        <li>HSN/SAC code on items</li>
+        <li>B2B invoice with buyer GSTIN</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="highlight warning">
+    <div class="highlight-title">⚠️ India-Specific Payment Requirement</div>
+    <p>India has one of the world's most diverse payment ecosystems. Your system MUST support UPI natively — this is non-negotiable for the Indian market. Integrate Razorpay or PayU as your payment gateway (both support UPI, cards, wallets, net banking). Also support offline POS card machines via Bluetooth connectivity.</p>
+  </div>
+</section>
+
+<!-- 11. WAITER/CAPTAIN APP -->
+<section class="section" id="waiter">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(249,115,22,0.15)">🤵</div>
+    <div>
+      <h2>Captain / Waiter App</h2>
+      <p>Android app for staff to take orders tableside — the Petpooja signature feature</p>
+    </div>
+  </div>
+
+  <div class="module-card m-waiter" style="margin-bottom:16px">
+    <div class="module-badge badge-important">🟠 Important</div>
+    <span class="module-icon">📱</span>
+    <h3>Waiter App — Tablet/Phone-Based Ordering</h3>
+    <p>Even with QR ordering, restaurants need a waiter/captain app for situations where customers are not comfortable with self-ordering, or the restaurant type requires attended service. The waiter carries an Android phone/tablet and takes orders directly at the table — replacing the traditional notepad. Orders go straight to kitchen without visiting the billing counter.</p>
+    <div class="grid-2" style="margin-top:12px">
+      <ul class="feature-list">
+        <li>Full menu access on mobile</li>
+        <li>Table selection from floor map</li>
+        <li>Take order for specific table</li>
+        <li>Add items to running order</li>
+        <li>Send to kitchen (KOT) instantly</li>
+        <li>Mark food as delivered</li>
+      </ul>
+      <ul class="feature-list">
+        <li>Request bill with one tap</li>
+        <li>See all active tables</li>
+        <li>Receive kitchen "ready" notifications</li>
+        <li>Works offline (syncs when online)</li>
+        <li>Login with waiter credentials</li>
+        <li>Waiter-wise order tracking for tips</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="highlight info">
+    <div class="highlight-title">💡 QR Ordering + Waiter App = Perfect Combination</div>
+    <p>The ideal restaurant workflow: 70% of customers self-order via QR → 30% order via waiter app (for elderly, families, etc.). Your system handles both simultaneously. The kitchen sees all orders in one unified KDS/printer — regardless of whether they came from QR or the waiter app.</p>
+  </div>
+</section>
+
+<!-- 12. AGGREGATOR INTEGRATION -->
+<section class="section" id="aggregator">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(20,184,166,0.15)">🛵</div>
+    <div>
+      <h2>Online Aggregator Integration</h2>
+      <p>Receive Zomato & Swiggy orders directly in your POS — no juggling between apps</p>
+    </div>
+  </div>
+
+  <div class="module-card m-aggr" style="margin-bottom:16px">
+    <div class="module-badge badge-advanced">🟦 Advanced</div>
+    <span class="module-icon">🛵</span>
+    <h3>Single Dashboard for All Orders</h3>
+    <p>Currently, restaurant owners use multiple devices — one tablet for Zomato, one for Swiggy, one for their POS. This causes missed orders, confusion, and inefficiency. Your system must bring ALL orders (dine-in, delivery, takeaway) into ONE screen. Orders from Zomato/Swiggy appear alongside QR orders on the same panel.</p>
+    <div class="grid-2" style="margin-top:12px">
+      <ul class="feature-list">
+        <li>Zomato API integration</li>
+        <li>Swiggy API integration</li>
+        <li>Auto-accept delivery orders</li>
+        <li>Menu sync across all platforms</li>
+        <li>Mark items as unavailable (syncs everywhere)</li>
+        <li>Reject orders with reason</li>
+      </ul>
+      <ul class="feature-list">
+        <li>Estimated delivery time management</li>
+        <li>Delivery order KOT routing</li>
+        <li>Commission tracking per platform</li>
+        <li>Aggregator-wise sales reports</li>
+        <li>Own delivery management</li>
+        <li>Delivery agent assignment (optional)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="highlight success">
+    <div class="highlight-title">✅ Why This is a Massive Advantage</div>
+    <p>Restaurants on Zomato/Swiggy pay 18–30% commission per order. By building your own online ordering system (accessible via the QR code outside the restaurant), you help restaurants get DIRECT orders with 0% commission. This is a major value proposition: "Use our QR system for direct orders and save lakhs in commission annually."</p>
+  </div>
+</section>
+
+<!-- 13. REPORTS & ANALYTICS -->
+<section class="section" id="reports">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(59,130,246,0.15)">📈</div>
+    <div>
+      <h2>Reports & Analytics</h2>
+      <p>Data-driven restaurant management — Petpooja offers 80+ reports, you should match or exceed</p>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-title">💰 Sales Reports</div>
+      <ul class="feature-list">
+        <li>Daily/weekly/monthly sales</li>
+        <li>Hourly sales heatmap</li>
+        <li>Sales by order type (dine/delivery)</li>
+        <li>Top-selling items</li>
+        <li>Category-wise revenue</li>
+        <li>Average bill value</li>
+        <li>Peak hour analysis</li>
+        <li>Sales comparison (week vs week)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">📦 Inventory Reports</div>
+      <ul class="feature-list">
+        <li>Current stock position</li>
+        <li>Daily consumption report</li>
+        <li>Wastage & loss report</li>
+        <li>Purchase history</li>
+        <li>Food cost analysis</li>
+        <li>Gross margin per dish</li>
+        <li>Slow-moving items</li>
+        <li>Reorder suggestions</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">👷 Staff Reports</div>
+      <ul class="feature-list">
+        <li>Waiter-wise sales report</li>
+        <li>Cancelled orders by staff</li>
+        <li>Discount given by staff</li>
+        <li>Shift-wise performance</li>
+        <li>Attendance tracking</li>
+        <li>Tip collection per waiter</li>
+        <li>Staff login/logout times</li>
+        <li>Exception reports (voided bills)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">💳 Payment Reports</div>
+      <ul class="feature-list">
+        <li>Payment mode summary</li>
+        <li>Cash vs digital split</li>
+        <li>UPI collection report</li>
+        <li>Day-end cash register</li>
+        <li>Advance payment tracking</li>
+        <li>Refund reports</li>
+        <li>Aggregator payout tracking</li>
+        <li>GST collected summary</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">👥 CRM Reports</div>
+      <ul class="feature-list">
+        <li>New vs returning customers</li>
+        <li>Customer lifetime value</li>
+        <li>Loyalty points issued/redeemed</li>
+        <li>Top 10 customers by spend</li>
+        <li>Customer visit frequency</li>
+        <li>Feedback score trend</li>
+        <li>Campaign response rates</li>
+        <li>Churn risk customers</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">🍽️ Operations Reports</div>
+      <ul class="feature-list">
+        <li>Table turnover rate</li>
+        <li>Average dine time</li>
+        <li>Kitchen preparation time</li>
+        <li>Order accuracy rate</li>
+        <li>Cancelled orders analysis</li>
+        <li>Reservation utilization</li>
+        <li>Peak vs off-peak load</li>
+        <li>QR vs waiter order split</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">📊 Owner Mobile Dashboard (Live)</div>
+    <p style="font-size:13px;color:var(--text2)">Restaurant owners want to check their business from anywhere on their phone. Your Owner App (Android/iOS) must show: Live sales today, Active tables count, Kitchen queue status, Top-selling item of the day, Low stock alerts, Pending deliveries, Today's cash collected — all in real-time, even if the owner is not at the restaurant.</p>
+  </div>
+</section>
+
+<!-- 14. STAFF MANAGEMENT -->
+<section class="section" id="staff">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(236,72,153,0.15)">👷</div>
+    <div>
+      <h2>Staff Management</h2>
+      <p>Control who can do what — prevent fraud and unauthorized actions</p>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">🔐 Role-Based Access Control</div>
+      <ul class="feature-list">
+        <li><strong style="color:var(--text)">Owner/Admin</strong> — Full access to everything</li>
+        <li><strong style="color:var(--text)">Manager</strong> — Billing, reports, moderate discounts</li>
+        <li><strong style="color:var(--text)">Cashier</strong> — Billing and payment only</li>
+        <li><strong style="color:var(--text)">Captain/Waiter</strong> — Order taking only</li>
+        <li><strong style="color:var(--text)">Kitchen Staff</strong> — KDS view only</li>
+        <li>Custom role creation</li>
+        <li>Permission-level discounting (e.g. max 10%)</li>
+        <li>Authorization required for voids/cancels</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-title">🕐 Attendance & Shifts</div>
+      <ul class="feature-list">
+        <li>Staff clock-in/clock-out</li>
+        <li>Shift management (morning/evening)</li>
+        <li>Attendance report monthly</li>
+        <li>Overtime calculation</li>
+        <li>Shift-wise sales by staff</li>
+        <li>Staff performance score</li>
+        <li>Salary advance tracking</li>
+        <li>Holiday & leave management</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 15. MULTI-OUTLET -->
+<section class="section" id="multi">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(108,99,255,0.15)">🏬</div>
+    <div>
+      <h2>Multi-Outlet Management</h2>
+      <p>Scale from 1 restaurant to a chain — manage everything centrally</p>
+    </div>
+  </div>
+
+  <div class="module-card m-multi">
+    <div class="module-badge badge-advanced">🟦 Advanced</div>
+    <span class="module-icon">🏬</span>
+    <h3>Central Chain Management</h3>
+    <p>When a restaurant chain has 5, 10, or 100 outlets, the owner needs to see all of them from ONE dashboard. Manage menus, pricing, inventory, and reports for every outlet centrally. This is a major growth feature that lets you target restaurant chains and franchise businesses.</p>
+    <div class="grid-2" style="margin-top:12px">
+      <ul class="feature-list">
+        <li>Central menu management (push to all outlets)</li>
+        <li>Outlet-specific price overrides</li>
+        <li>Central inventory with outlet transfers</li>
+        <li>Central kitchen module</li>
+        <li>Consolidated sales reports</li>
+        <li>Outlet comparison dashboards</li>
+      </ul>
+      <ul class="feature-list">
+        <li>Franchise management module</li>
+        <li>Royalty fee calculation per outlet</li>
+        <li>Central customer database (CRM)</li>
+        <li>Universal loyalty card across outlets</li>
+        <li>Staff transfer between outlets</li>
+        <li>Outlet-wise role management</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- COMPETITOR ANALYSIS -->
+<section class="section" id="competitor">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(239,68,68,0.15)">⚔️</div>
+    <div>
+      <h2>Petpooja — Detailed Competitor Analysis</h2>
+      <p>What they have, what they lack, and how you win</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">🏆 Petpooja — Strengths</div>
+    <ul class="feature-list">
+      <li>1,00,000+ restaurants across India — massive brand trust</li>
+      <li>Complete feature set: Billing, KOT, KDS, Inventory, CRM, Reports, Aggregator integration</li>
+      <li>Affordable pricing starting ~₹10,000/year for single outlet</li>
+      <li>Captain ordering app for Android (staff order-taking)</li>
+      <li>80+ business reports and analytics</li>
+      <li>Supports 200+ printers, barcode scanners, weighing scales</li>
+      <li>Offline mode — works without internet</li>
+      <li>Multi-outlet and franchise management</li>
+      <li>GST-compliant billing with auto calculation</li>
+      <li>Zomato + Swiggy + other aggregator integration</li>
+    </ul>
+  </div>
+
+  <div class="highlight danger">
+    <div class="highlight-title">🎯 Petpooja Weaknesses — Your Opportunities</div>
+    <p>Based on user reviews and market analysis, these are areas where Petpooja falls short — your entry points.</p>
+  </div>
+
+  <div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px">
+    <table class="comp-table">
+      <thead>
+        <tr>
+          <th>Feature Area</th>
+          <th>Petpooja</th>
+          <th>Your POS Opportunity</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>QR Ordering (Customer Self-Order)</td>
+          <td><span class="partial">⚡ Basic</span></td>
+          <td>Full-featured PWA, no app download, pay via QR, call waiter button, multi-language</td>
+        </tr>
+        <tr>
+          <td>UI/UX for Restaurant Owners</td>
+          <td><span class="partial">⚡ Dated interface</span></td>
+          <td>Modern, intuitive UI — no training required for staff</td>
+        </tr>
+        <tr>
+          <td>Customer Mobile Experience</td>
+          <td><span class="no">✗ Limited</span></td>
+          <td>Beautiful QR menu with photos, filters, real-time availability, order tracking</td>
+        </tr>
+        <tr>
+          <td>Online Direct Ordering</td>
+          <td><span class="partial">⚡ Partial</span></td>
+          <td>Own online ordering website/link (zero commission), reducing Zomato/Swiggy dependency</td>
+        </tr>
+        <tr>
+          <td>Flexible Pricing Plans</td>
+          <td><span class="no">✗ Annual only</span></td>
+          <td>Monthly plans, free trial, modular pricing (pay for what you need)</td>
+        </tr>
+        <tr>
+          <td>Setup Complexity</td>
+          <td><span class="no">✗ Requires training</span></td>
+          <td>15-minute setup, guided onboarding, WhatsApp support</td>
+        </tr>
+        <tr>
+          <td>Customer Feedback Integration</td>
+          <td><span class="partial">⚡ Basic</span></td>
+          <td>In-app rating post-meal, Google Review redirect, sentiment analysis</td>
+        </tr>
+        <tr>
+          <td>Multilingual Menu</td>
+          <td><span class="no">✗ Limited</span></td>
+          <td>Hindi, Tamil, Telugu, Kannada, etc. — QR menu in customer's language</td>
+        </tr>
+        <tr>
+          <td>WhatsApp Integration</td>
+          <td><span class="partial">⚡ SMS only</span></td>
+          <td>Native WhatsApp bill delivery, loyalty updates, marketing campaigns</td>
+        </tr>
+        <tr>
+          <td>AI-powered Analytics</td>
+          <td><span class="no">✗ Not yet</span></td>
+          <td>AI demand forecasting, smart reorder suggestions, customer churn prediction</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="highlight success">
+    <div class="highlight-title">✅ Your Key Competitive Differentiators vs Petpooja</div>
+    <p>1. <strong style="color:var(--text)">Superior QR Ordering Experience</strong> — Petpooja's QR is basic. Yours is a full PWA with photos, real-time availability, multi-language, cart, payment, and waiter-call button.<br>
+    2. <strong style="color:var(--text)">Zero-Commission Direct Ordering</strong> — Create a shareable restaurant link customers can use from home/social media to order directly (saving 20–30% Zomato commission).<br>
+    3. <strong style="color:var(--text)">Flexible Monthly Pricing</strong> — Petpooja requires annual commitment. Offer monthly plans and a free 30-day trial.<br>
+    4. <strong style="color:var(--text)">Modern UI</strong> — Petpooja's interface is old. A clean, modern UI is a massive differentiator when demoing to restaurant owners.<br>
+    5. <strong style="color:var(--text)">WhatsApp-First Communication</strong> — Bills, loyalty updates, and marketing via WhatsApp (where every Indian is already active).</p>
+  </div>
+</section>
+
+<!-- TECH STACK -->
+<section class="section" id="techstack">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(20,184,166,0.15)">⚙️</div>
+    <div>
+      <h2>Recommended Tech Stack</h2>
+      <p>Technologies to build every part of your POS system</p>
+    </div>
+  </div>
+
+  <div style="margin-bottom:8px">
+    <p style="font-size:12px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:16px">Frontend / Customer Facing</p>
+    <div class="tech-item">
+      <span class="tech-icon">⚛️</span>
+      <span class="tech-layer">QR Menu App</span>
+      <div><div class="tech-name">React.js + PWA (Progressive Web App)</div><div class="tech-reason">No app install required. Works on any phone. Fast, SEO-friendly, offline-capable. Deploy as a PWA.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">📱</span>
+      <span class="tech-layer">Admin Panel</span>
+      <div><div class="tech-name">React.js + Tailwind CSS</div><div class="tech-reason">Modern, responsive web dashboard for POS counter, table management, reports. Works on tablet & desktop.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">🤵</span>
+      <span class="tech-layer">Waiter App</span>
+      <div><div class="tech-name">React Native (Android/iOS)</div><div class="tech-reason">Cross-platform mobile app for captains/waiters. One codebase for both platforms.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">📺</span>
+      <span class="tech-layer">KDS Screen</span>
+      <div><div class="tech-name">React.js + WebSocket</div><div class="tech-reason">Browser-based KDS on any Android TV or tablet. Real-time updates via WebSocket. No app install needed.</div></div>
+    </div>
+  </div>
+
+  <div style="margin:24px 0 8px">
+    <p style="font-size:12px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:16px">Backend / Server</p>
+    <div class="tech-item">
+      <span class="tech-icon">🟢</span>
+      <span class="tech-layer">API Server</span>
+      <div><div class="tech-name">Node.js + Express.js (or NestJS)</div><div class="tech-reason">Fast, scalable REST API. NestJS adds structure and TypeScript for large teams.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">⚡</span>
+      <span class="tech-layer">Real-time</span>
+      <div><div class="tech-name">Socket.io (WebSocket)</div><div class="tech-reason">Push orders to KDS, admin panel, and waiter app in real-time without polling. Critical for live kitchen updates.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">🗄️</span>
+      <span class="tech-layer">Database</span>
+      <div><div class="tech-name">PostgreSQL (primary) + Redis (cache)</div><div class="tech-reason">PostgreSQL for all business data (orders, inventory, billing). Redis for session management, real-time state, queue.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">📁</span>
+      <span class="tech-layer">File Storage</span>
+      <div><div class="tech-name">AWS S3 / Cloudflare R2</div><div class="tech-reason">Store food photos, receipts, reports. Cloudflare R2 has zero egress cost — better for Indian startups.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">🔐</span>
+      <span class="tech-layer">Auth</span>
+      <div><div class="tech-name">JWT + Role-Based Access Control</div><div class="tech-reason">Secure login for each role (Owner, Manager, Waiter, Chef). JWT tokens with refresh logic.</div></div>
+    </div>
+  </div>
+
+  <div style="margin:24px 0 8px">
+    <p style="font-size:12px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:16px">Infrastructure & Integrations</p>
+    <div class="tech-item">
+      <span class="tech-icon">☁️</span>
+      <span class="tech-layer">Hosting</span>
+      <div><div class="tech-name">AWS / Google Cloud + Vercel (frontend)</div><div class="tech-reason">AWS Mumbai region for low latency in India. Vercel for frontend deployment with global CDN.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">💳</span>
+      <span class="tech-layer">Payments</span>
+      <div><div class="tech-name">Razorpay (primary) + PayU</div><div class="tech-reason">India's best payment gateway. Supports UPI, cards, wallets, payment links. Easy API integration.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">💬</span>
+      <span class="tech-layer">WhatsApp</span>
+      <div><div class="tech-name">Twilio / Meta WhatsApp Business API</div><div class="tech-reason">Send bills, loyalty updates, OTPs via WhatsApp. Critical for Indian restaurant communication.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">📱</span>
+      <span class="tech-layer">SMS</span>
+      <div><div class="tech-name">MSG91 / Textlocal (India)</div><div class="tech-reason">Bulk SMS for marketing, OTP verification. India-specific providers with DLT compliance.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">📊</span>
+      <span class="tech-layer">Analytics</span>
+      <div><div class="tech-name">Custom Analytics + Metabase</div><div class="tech-reason">Build custom analytics engine. Use Metabase or Superset for business intelligence dashboards.</div></div>
+    </div>
+    <div class="tech-item">
+      <span class="tech-icon">📦</span>
+      <span class="tech-layer">Queue</span>
+      <div><div class="tech-name">Bull.js (Redis Queue) / RabbitMQ</div><div class="tech-reason">Background jobs: print jobs, SMS queues, report generation, inventory updates without blocking API.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- DATABASE SCHEMA -->
+<section class="section" id="database">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(108,99,255,0.15)">🗄️</div>
+    <div>
+      <h2>Core Database Schema</h2>
+      <p>Key tables your system needs — the data foundation</p>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="schema-box">
+      <div class="schema-header">📋 orders</div>
+      <div class="schema-row"><span class="schema-field">id</span><span class="schema-type">uuid</span><span class="schema-pk">PK</span></div>
+      <div class="schema-row"><span class="schema-field">restaurant_id</span><span class="schema-type">uuid</span><span class="schema-pk">FK</span></div>
+      <div class="schema-row"><span class="schema-field">table_id</span><span class="schema-type">uuid</span><span class="schema-pk">FK</span></div>
+      <div class="schema-row"><span class="schema-field">order_type</span><span class="schema-type">enum</span></div>
+      <div class="schema-row"><span class="schema-field">status</span><span class="schema-type">enum</span></div>
+      <div class="schema-row"><span class="schema-field">source</span><span class="schema-type">enum</span></div>
+      <div class="schema-row"><span class="schema-field">total_amount</span><span class="schema-type">decimal</span></div>
+      <div class="schema-row"><span class="schema-field">gst_amount</span><span class="schema-type">decimal</span></div>
+      <div class="schema-row"><span class="schema-field">discount</span><span class="schema-type">decimal</span></div>
+      <div class="schema-row"><span class="schema-field">created_at</span><span class="schema-type">timestamp</span></div>
+    </div>
+    <div class="schema-box">
+      <div class="schema-header">🍽️ menu_items</div>
+      <div class="schema-row"><span class="schema-field">id</span><span class="schema-type">uuid</span><span class="schema-pk">PK</span></div>
+      <div class="schema-row"><span class="schema-field">restaurant_id</span><span class="schema-type">uuid</span><span class="schema-pk">FK</span></div>
+      <div class="schema-row"><span class="schema-field">category_id</span><span class="schema-type">uuid</span><span class="schema-pk">FK</span></div>
+      <div class="schema-row"><span class="schema-field">name</span><span class="schema-type">varchar</span></div>
+      <div class="schema-row"><span class="schema-field">price</span><span class="schema-type">decimal</span></div>
+      <div class="schema-row"><span class="schema-field">food_type</span><span class="schema-type">enum</span></div>
+      <div class="schema-row"><span class="schema-field">is_available</span><span class="schema-type">boolean</span></div>
+      <div class="schema-row"><span class="schema-field">gst_slab</span><span class="schema-type">decimal</span></div>
+      <div class="schema-row"><span class="schema-field">photo_url</span><span class="schema-type">text</span></div>
+      <div class="schema-row"><span class="schema-field">is_bestseller</span><span class="schema-type">boolean</span></div>
+    </div>
+    <div class="schema-box">
+      <div class="schema-header">🪑 tables</div>
+      <div class="schema-row"><span class="schema-field">id</span><span class="schema-type">uuid</span><span class="schema-pk">PK</span></div>
+      <div class="schema-row"><span class="schema-field">restaurant_id</span><span class="schema-type">uuid</span><span class="schema-pk">FK</span></div>
+      <div class="schema-row"><span class="schema-field">table_number</span><span class="schema-type">varchar</span></div>
+      <div class="schema-row"><span class="schema-field">section</span><span class="schema-type">varchar</span></div>
+      <div class="schema-row"><span class="schema-field">capacity</span><span class="schema-type">integer</span></div>
+      <div class="schema-row"><span class="schema-field">status</span><span class="schema-type">enum</span></div>
+      <div class="schema-row"><span class="schema-field">qr_code_url</span><span class="schema-type">text</span></div>
+      <div class="schema-row"><span class="schema-field">current_order_id</span><span class="schema-type">uuid</span></div>
+    </div>
+    <div class="schema-box">
+      <div class="schema-header">📦 inventory_items</div>
+      <div class="schema-row"><span class="schema-field">id</span><span class="schema-type">uuid</span><span class="schema-pk">PK</span></div>
+      <div class="schema-row"><span class="schema-field">restaurant_id</span><span class="schema-type">uuid</span><span class="schema-pk">FK</span></div>
+      <div class="schema-row"><span class="schema-field">name</span><span class="schema-type">varchar</span></div>
+      <div class="schema-row"><span class="schema-field">unit</span><span class="schema-type">varchar</span></div>
+      <div class="schema-row"><span class="schema-field">current_stock</span><span class="schema-type">decimal</span></div>
+      <div class="schema-row"><span class="schema-field">minimum_stock</span><span class="schema-type">decimal</span></div>
+      <div class="schema-row"><span class="schema-field">cost_per_unit</span><span class="schema-type">decimal</span></div>
+      <div class="schema-row"><span class="schema-field">supplier_id</span><span class="schema-type">uuid</span></div>
+    </div>
+    <div class="schema-box">
+      <div class="schema-header">👤 customers</div>
+      <div class="schema-row"><span class="schema-field">id</span><span class="schema-type">uuid</span><span class="schema-pk">PK</span></div>
+      <div class="schema-row"><span class="schema-field">restaurant_id</span><span class="schema-type">uuid</span><span class="schema-pk">FK</span></div>
+      <div class="schema-row"><span class="schema-field">name</span><span class="schema-type">varchar</span></div>
+      <div class="schema-row"><span class="schema-field">phone</span><span class="schema-type">varchar</span></div>
+      <div class="schema-row"><span class="schema-field">email</span><span class="schema-type">varchar</span></div>
+      <div class="schema-row"><span class="schema-field">loyalty_points</span><span class="schema-type">integer</span></div>
+      <div class="schema-row"><span class="schema-field">total_spent</span><span class="schema-type">decimal</span></div>
+      <div class="schema-row"><span class="schema-field">birthday</span><span class="schema-type">date</span></div>
+    </div>
+    <div class="schema-box">
+      <div class="schema-header">🏪 restaurants</div>
+      <div class="schema-row"><span class="schema-field">id</span><span class="schema-type">uuid</span><span class="schema-pk">PK</span></div>
+      <div class="schema-row"><span class="schema-field">chain_id</span><span class="schema-type">uuid</span><span class="schema-pk">FK</span></div>
+      <div class="schema-row"><span class="schema-field">name</span><span class="schema-type">varchar</span></div>
+      <div class="schema-row"><span class="schema-field">gstin</span><span class="schema-type">varchar</span></div>
+      <div class="schema-row"><span class="schema-field">address</span><span class="schema-type">text</span></div>
+      <div class="schema-row"><span class="schema-field">phone</span><span class="schema-type">varchar</span></div>
+      <div class="schema-row"><span class="schema-field">logo_url</span><span class="schema-type">text</span></div>
+      <div class="schema-row"><span class="schema-field">plan</span><span class="schema-type">enum</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- COMPETITIVE STRATEGY -->
+<section class="section" id="strategy">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(34,197,94,0.15)">🚀</div>
+    <div>
+      <h2>Go-to-Market & Competitive Strategy</h2>
+      <p>How to beat Petpooja and win the market</p>
+    </div>
+  </div>
+
+  <div class="highlight success">
+    <div class="highlight-title">🎯 Your Positioning: "Modern QR-First POS for the New-Age Restaurant"</div>
+    <p>Petpooja is built for the operations side (billing, inventory). Your system is built around the CUSTOMER EXPERIENCE — QR ordering, faster service, happier customers, more table turns. This is the story restaurants want to hear in 2025.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">📋 Recommended Pricing Strategy</div>
+    <div class="grid-3" style="margin-top:16px">
+      <div class="price-card">
+        <div class="price-tier">Starter</div>
+        <div class="price-amt">₹999</div>
+        <div class="price-period">/month</div>
+        <ul class="price-features">
+          <li><span>✓</span> QR Ordering System</li>
+          <li><span>✓</span> Billing & KOT</li>
+          <li><span>✓</span> Basic Menu</li>
+          <li><span>✓</span> 1 Outlet</li>
+          <li><span>✓</span> Basic Reports</li>
+          <li><span>✓</span> WhatsApp Support</li>
+        </ul>
+      </div>
+      <div class="price-card featured" style="margin-top:0">
+        <div class="price-tier" style="margin-top:18px">Professional</div>
+        <div class="price-amt">₹2,499</div>
+        <div class="price-period">/month</div>
+        <ul class="price-features">
+          <li><span>✓</span> Everything in Starter</li>
+          <li><span>✓</span> KDS + Waiter App</li>
+          <li><span>✓</span> Inventory Management</li>
+          <li><span>✓</span> CRM & Loyalty</li>
+          <li><span>✓</span> Zomato/Swiggy Sync</li>
+          <li><span>✓</span> 50+ Reports</li>
+          <li><span>✓</span> Phone Support</li>
+        </ul>
+      </div>
+      <div class="price-card">
+        <div class="price-tier">Enterprise</div>
+        <div class="price-amt">₹5,999</div>
+        <div class="price-period">/month</div>
+        <ul class="price-features">
+          <li><span>✓</span> Everything in Pro</li>
+          <li><span>✓</span> Multi-outlet</li>
+          <li><span>✓</span> Central Kitchen</li>
+          <li><span>✓</span> Franchise Module</li>
+          <li><span>✓</span> Custom Reports</li>
+          <li><span>✓</span> AI Analytics</li>
+          <li><span>✓</span> Dedicated Manager</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🗓️ Build Priority Roadmap</div>
+    <div class="qr-steps" style="margin-top:12px">
+      <div class="qr-step">
+        <div class="step-num" style="background:rgba(239,68,68,0.2);color:var(--red)">P1</div>
+        <div class="step-content">
+          <h4>Phase 1 — MVP Core (3–4 months)</h4>
+          <p>QR ordering system · Basic menu management · Billing & KOT · Table management · GST billing · Basic reports · WhatsApp bill sending · Payment gateway (Razorpay)</p>
+        </div>
+      </div>
+      <div class="qr-step">
+        <div class="step-num" style="background:rgba(249,115,22,0.2);color:var(--orange)">P2</div>
+        <div class="step-content">
+          <h4>Phase 2 — Operations (2–3 months)</h4>
+          <p>KDS (Kitchen Display System) · Inventory management · Captain/Waiter App (Android) · CRM & loyalty program · Staff management & roles · Advanced reports (50+)</p>
+        </div>
+      </div>
+      <div class="qr-step">
+        <div class="step-num" style="background:rgba(34,197,94,0.2);color:var(--green)">P3</div>
+        <div class="step-content">
+          <h4>Phase 3 — Scale (2–3 months)</h4>
+          <p>Zomato & Swiggy integration · Multi-outlet management · Marketing campaigns · Feedback & review system · Owner mobile app · Advanced analytics dashboard</p>
+        </div>
+      </div>
+      <div class="qr-step" style="padding-bottom:0">
+        <div class="step-num" style="background:rgba(108,99,255,0.2);color:var(--accent)">P4</div>
+        <div class="step-content">
+          <h4>Phase 4 — AI & Growth (Ongoing)</h4>
+          <p>AI demand forecasting · Smart reorder suggestions · Predictive analytics · Franchise module · API marketplace for third-party integrations · White-label option</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="highlight warning" style="margin-top:16px">
+    <div class="highlight-title">⚠️ Critical Success Factors</div>
+    <p>1. <strong style="color:var(--text)">Offline Mode is Non-Negotiable</strong> — Indian restaurants have unreliable internet. Your system MUST work offline and sync when connectivity returns.<br>
+    2. <strong style="color:var(--text)">Hardware Compatibility</strong> — Support standard thermal printers (ESC/POS protocol). Restaurants already own these; they won't buy new hardware.<br>
+    3. <strong style="color:var(--text)">Onboarding</strong> — Petpooja needs on-site training. Beat them with guided self-onboarding, video tutorials, and live WhatsApp support.<br>
+    4. <strong style="color:var(--text)">Speed</strong> — The POS counter handles 100+ orders per hour during peak time. Your system must be fast. Lag = lost customers + unhappy staff.<br>
+    5. <strong style="color:var(--text)">Data Security</strong> — Customer data, payment data, and business data must be encrypted and backed up. Restaurants cannot afford data loss.</p>
+  </div>
+
+  <div class="card" style="margin-top:16px;border-color:rgba(108,99,255,0.3)">
+    <div class="card-title" style="color:var(--accent)">🏁 Summary — Everything You Need to Build</div>
+    <div class="grid-3" style="margin-top:12px">
+      <ul class="feature-list">
+        <li><strong style="color:var(--text)">QR Ordering System</strong> (PWA)</li>
+        <li><strong style="color:var(--text)">Billing & Invoicing</strong> (GST)</li>
+        <li><strong style="color:var(--text)">KOT System</strong></li>
+        <li><strong style="color:var(--text)">Kitchen Display (KDS)</strong></li>
+        <li><strong style="color:var(--text)">Table Management</strong></li>
+      </ul>
+      <ul class="feature-list">
+        <li><strong style="color:var(--text)">Menu Management</strong></li>
+        <li><strong style="color:var(--text)">Inventory & Recipes</strong></li>
+        <li><strong style="color:var(--text)">CRM & Loyalty</strong></li>
+        <li><strong style="color:var(--text)">Multi-Payment Gateway</strong></li>
+        <li><strong style="color:var(--text)">Captain/Waiter App</strong></li>
+      </ul>
+      <ul class="feature-list">
+        <li><strong style="color:var(--text)">Aggregator Integration</strong></li>
+        <li><strong style="color:var(--text)">Reports & Analytics</strong></li>
+        <li><strong style="color:var(--text)">Staff Management</strong></li>
+        <li><strong style="color:var(--text)">Multi-outlet Support</strong></li>
+        <li><strong style="color:var(--text)">Owner Mobile App</strong></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+  const navItems = document.querySelectorAll('.nav-item');
+  const sections = document.querySelectorAll('.section');
+
+  navItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      const target = item.getAttribute('href');
+      if (target) {
+        const el = document.querySelector(target);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    });
+  });
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.getAttribute('id');
+        navItems.forEach(item => {
+          item.classList.remove('active');
+          if (item.getAttribute('href') === '#' + id) {
+            item.classList.add('active');
+          }
+        });
+      }
+    });
+  }, { threshold: 0.2, rootMargin: '-80px 0px -60% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

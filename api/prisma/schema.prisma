@@ -1,0 +1,1719 @@
+// ============================================================
+//  Vuedine — base schema (Phase 2)
+//
+//  Adds the multi-tenant backbone (Tenant, Branch, User) plus the
+//  auth & audit tables that Phase 4 will plug into.
+//
+//  Conventions documented in BACKEND_PHASES.md Phase 2:
+//   - cuid PKs (sortable, URL-safe)
+//   - createdAt / updatedAt / deletedAt for soft delete
+//   - Every business table carries tenantId (composite indexes lead with it)
+//   - Money is Decimal(12,2) (lands in Phase 5+ when orders/payments arrive)
+//   - timestamps are timestamptz (Prisma's default DateTime)
+//
+//  Decision: see api/docs/decisions/0001-orm.md, 0002-multi-tenancy.md
+// ============================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+//  Enums
+// ============================================================
+
+enum UserRole {
+  SUPER_ADMIN // Vuedine platform staff
+  OWNER // tenant owner
+  ADMIN // tenant admin
+  MANAGER
+  CASHIER
+  WAITER
+  CHEF
+  CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+  DELETED
+}
+
+enum SessionStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum AuditAction {
+  AUTH_LOGIN
+  AUTH_LOGOUT
+  AUTH_LOGIN_FAILED
+  AUTH_REFRESH
+  AUTH_PASSWORD_RESET
+  AUTH_TOKEN_REUSE_DETECTED
+  USER_CREATED
+  USER_UPDATED
+  USER_DELETED
+  TENANT_CREATED
+  BRANCH_CREATED
+  BRANCH_UPDATED
+  BRANCH_DELETED
+  BRANCH_TOGGLED_LIVE
+  TABLE_CREATED
+  TABLE_UPDATED
+  TABLE_DELETED
+  TABLE_QR_REGENERATED
+  ITEM_CREATED
+  ITEM_UPDATED
+  ITEM_DELETED
+  ORDER_CREATED
+  ORDER_UPDATED
+  ORDER_STATUS_CHANGED
+  ORDER_CANCELLED
+  ORDER_REFIRED
+  ORDER_LINE_PREPARED
+  TABLE_SESSION_OPENED
+  TABLE_SESSION_CLOSED
+  TABLE_SESSION_TRANSFERRED
+  TABLE_SESSION_MERGED
+  KDS_TICKET_BUMPED
+  KDS_TICKET_RECALLED
+  GUEST_RING_WAITER
+  GUEST_REQUEST_BILL
+  GUEST_FEEDBACK
+  PAYMENT_CAPTURED
+  PAYMENT_REFUNDED
+  PAYMENT_FAILED
+  PAYMENT_COMP
+  PAYMENT_TIP
+  SETTLEMENT_SYNCED
+  PAYMENT_SETTINGS_UPDATED
+  PROMOTION_CREATED
+  PROMOTION_UPDATED
+  PROMOTION_DELETED
+  PROMOTION_REDEEMED
+  PROMOTION_PAUSED
+  PROMOTION_RESUMED
+  PROMOTION_EXPIRED
+  PROMOTION_ACTIVATED
+  SETTINGS_CHANGED
+  PERMISSION_CHANGED
+  USER_INVITED
+  USER_INVITE_ACCEPTED
+  USER_SUSPENDED
+  USER_RESTORED
+  USER_PIN_RESET
+  USER_PIN_VERIFIED
+  USER_PIN_LOCKED
+  USER_ROLE_ASSIGNED
+  CUSTOMER_TAGGED
+  CUSTOMER_PREFERENCES_UPDATED
+  CUSTOMER_ANONYMIZED
+  SHIFT_STARTED
+  SHIFT_ENDED
+  API_KEY_ISSUED
+  API_KEY_REVOKED
+  TAX_SLAB_CREATED
+  TAX_SLAB_UPDATED
+  TAX_SLAB_DELETED
+  PAYMENT_METHOD_CONFIG_CHANGED
+  HARDWARE_DEVICE_CREATED
+  HARDWARE_DEVICE_UPDATED
+  HARDWARE_DEVICE_DELETED
+  HARDWARE_DEVICE_PAIRED
+  NOTIFICATION_PREFS_CHANGED
+  TENANT_DATA_EXPORTED
+  TENANT_ANONYMIZED
+  QR_CODE_CREATED
+  QR_CODE_UPDATED
+  QR_CODE_DELETED
+  QR_CODE_REGENERATED
+  CAMPAIGN_CREATED
+  CAMPAIGN_UPDATED
+  CAMPAIGN_DELETED
+  CAMPAIGN_SCHEDULED
+  CAMPAIGN_SENT
+  CAMPAIGN_CANCELLED
+  SEGMENT_CREATED
+  SEGMENT_DELETED
+  PUSH_SUBSCRIBED
+  PUSH_UNSUBSCRIBED
+  CUSTOMER_IMPORTED
+  CUSTOMER_BULK_UPDATED
+  MESSAGE_SENT
+  MESSAGE_RECEIVED
+  CONVERSATION_ASSIGNED
+  CONVERSATION_STATUS_CHANGED
+  INTEGRATION_CONNECTED
+  INTEGRATION_DISCONNECTED
+  INTEGRATION_TESTED
+  INTEGRATION_SYNCED
+  WEBHOOK_RECEIVED
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_PLAN_CHANGED
+  SUBSCRIPTION_CANCELLED
+  SUBSCRIPTION_RESUMED
+  SUBSCRIPTION_ADDON_TOGGLED
+  INVOICE_GENERATED
+  INVOICE_PAID
+  INVOICE_FAILED
+}
+
+// ============================================================
+//  Item — menu catalog (Phase 5)
+// ============================================================
+
+enum ItemStatus {
+  ACTIVE
+  SOLD_OUT
+  DRAFT
+}
+
+model Item {
+  id          String     @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  category    String
+  price       Decimal    @db.Decimal(12, 2)
+  status      ItemStatus @default(ACTIVE)
+  emoji       String?
+  imageUrl    String?
+  veg         Boolean    @default(true)
+  bestseller  Boolean    @default(false)
+
+  // Empty array = available at every branch of the tenant.
+  branchIds String[] @default([])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, status, deletedAt])
+  @@index([tenantId, category, deletedAt])
+  @@index([tenantId, name])
+  @@map("items")
+}
+
+// ============================================================
+//  Tenant — the restaurant company
+// ============================================================
+
+model Tenant {
+  id        String  @id @default(cuid())
+  name      String
+  legalName String?
+  slug      String  @unique
+  type      String  @default("restaurant") // restaurant | cafe | qsr | hotel | cloud
+  currency  String  @default("INR")
+  timezone  String  @default("Asia/Kolkata")
+  locale    String  @default("en-IN")
+  taxConfig Json? // { gstNumber, slabs: [...], inclusive: bool }
+
+  // Phase F — Restaurant identity
+  gstin       String?
+  pan         String?
+  fssai       String?
+  description String?
+  logoUrl     String?
+  bannerUrl   String?
+  contactEmail String?
+  contactPhone String?
+
+  // Phase F — Branding
+  brandColor   String  @default("#EC1B7C")
+  brandTheme   String  @default("light")
+  customDomain String? @unique
+
+  // Phase F — Invoicing / Localization
+  invoicePrefix   String    @default("INV")
+  invoiceSequence Int       @default(1)
+  numberLocale    String    @default("en-IN")
+  weekStart       WeekStart @default(MONDAY)
+  weightUnit      String    @default("g")
+
+  // Phase F — Demo mode (hourly reset when true)
+  demoMode Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  branches  Branch[]
+  users     User[]
+  sessions  Session[]
+  auditLogs AuditLog[]
+  apiKeys   ApiKey[]
+
+  @@index([deletedAt])
+  @@map("tenants")
+}
+
+// ============================================================
+//  Branch — an outlet / location belonging to a tenant
+// ============================================================
+
+model Branch {
+  id           String  @id @default(cuid())
+  tenantId     String
+  name         String
+  code         String // e.g. "BAN" for Bandra
+  qrSlug       String  @unique // public URL component, e.g. 'bandra'
+  address      String?
+  phone        String?
+  email        String?
+  manager      String?
+  isLive       Boolean @default(true)
+  openingHours Json? // { mon: ['09:00','23:00'], ... }
+
+  // Operational defaults — overrideable per tenant
+  timezoneCode   String?
+  defaultPrep    Int      @default(15) // minutes — used by ETAs in Phase B
+  serviceCharge  Decimal  @default(0) @db.Decimal(5, 2)
+  taxInclusive   Boolean  @default(false)
+  diningSections String[] @default([]) // ['Indoor · Window', 'Terrace', ...]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  tables Table[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, deletedAt])
+  @@map("branches")
+}
+
+// ============================================================
+//  Table — dining tables, bar stools, takeaway counter
+//
+//  Status state machine driven by orders module (Phase B). The CRUD
+//  endpoints for direct mutation only allow status changes between
+//  FREE / CLEANING (housekeeping) — operational status (OCCUPIED / BILL /
+//  RESERVED) is set automatically by the orders pipeline.
+//
+//  Each table carries its own qrToken used in /m/:branchSlug/:qrToken so
+//  rotating it invalidates a leaked QR code without re-printing every other.
+// ============================================================
+
+model Table {
+  id       String      @id @default(cuid())
+  tenantId String
+  branchId String
+  name     String // 'Table 7', 'Bar 1', 'Takeaway'
+  section  String // free-form for now
+  capacity Int         @default(4) // 0 = counter / takeaway
+  shape    TableShape  @default(round)
+  status   TableStatus @default(FREE)
+  active   Boolean     @default(true)
+  qrToken  String      @unique // 16-char URL slug
+  posLabel String? // optional short tag for POS
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  qrCode QrCode?
+
+  @@unique([branchId, name])
+  @@index([tenantId, branchId, deletedAt])
+  @@index([tenantId, branchId, status])
+  @@index([qrToken])
+  @@map("tables")
+}
+
+enum TableShape {
+  round
+  square
+  rect
+}
+
+enum TableStatus {
+  FREE
+  OCCUPIED
+  RESERVED
+  CLEANING
+  BILL
+}
+
+// ============================================================
+//  User
+//
+//  - SUPER_ADMIN users have tenantId = null (platform staff)
+//  - All others belong to exactly one tenant
+//  - branchIds is a denormalized list of branches a user can access;
+//    empty array = "tenant-wide" for OWNER / ADMIN
+// ============================================================
+
+model User {
+  id               String     @id @default(cuid())
+  tenantId         String? // null for platform staff
+  email            String     @db.Citext
+  emailVerifiedAt  DateTime?
+  passwordHash     String
+  name             String
+  phone            String?
+  avatarUrl        String?
+  role             UserRole   @default(CUSTOMER)
+  status           UserStatus @default(ACTIVE)
+  branchIds        String[]   @default([])
+  lastLoginAt      DateTime?
+  failedLoginCount Int        @default(0)
+  lockedUntil      DateTime?
+
+  // Phase E — staff + customer extensions
+  salary          Decimal?  @db.Decimal(12, 2)
+  hourlyRate      Decimal?  @db.Decimal(12, 2)
+  invitedAt       DateTime?
+  invitedBy       String? // userId of the inviter
+  inviteToken     String?   @unique
+  inviteExpiresAt DateTime?
+  lastActiveAt    DateTime?
+  customRoleId    String? // optional override of enum role
+  pinHash         String? // 4-digit POS PIN (bcrypt-hashed)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant          Tenant?          @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  customRole      Role?            @relation(fields: [customRoleId], references: [id], onDelete: SetNull)
+  sessions        Session[]
+  auditLogs       AuditLog[]
+  shifts          Shift[]
+  customerProfile CustomerProfile?
+
+  @@unique([tenantId, email])
+  @@index([email])
+  @@index([tenantId, role, deletedAt])
+  @@index([inviteToken])
+  @@map("users")
+}
+
+// ============================================================
+//  Session — refresh-token rotation row
+//
+//  Phase 4 wires this in. Stored here in Phase 2 so the schema is stable.
+//
+//  - refreshTokenHash: SHA-256 of the raw token. Even a DB leak doesn't yield
+//    valid tokens.
+//  - rotatedToId: when this session is exchanged for a new one, we record the
+//    new id here. A request arriving with a token whose row has rotatedToId
+//    set is a replay → revoke entire family.
+//  - family: shared id across the rotation chain (one per login).
+// ============================================================
+
+model Session {
+  id               String        @id @default(cuid())
+  userId           String
+  tenantId         String?
+  refreshTokenHash String        @unique
+  rotatedToId      String?       @unique
+  family           String
+  ip               String?
+  userAgent        String?
+  status           SessionStatus @default(ACTIVE)
+  expiresAt        DateTime
+  createdAt        DateTime      @default(now())
+  revokedAt        DateTime?
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([family])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ============================================================
+//  Audit log
+//
+//  Append-only. Best-effort writes — never block a request if audit DB is down.
+//  Kept for compliance + incident forensics.
+// ============================================================
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  tenantId   String?
+  userId     String?
+  action     AuditAction
+  entityType String? // e.g. "Item", "Order"
+  entityId   String?
+  ip         String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime    @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================================
+//  ApiKey — tenant-issued bearer keys for webhook receivers,
+//  POS hardware, and server-to-server integrations (Phase 9).
+//
+//  Key material flow:
+//    1. issue(): generate `sk_live_<32 random bytes base64url>`,
+//       store argon2id hash, return raw value ONCE to caller
+//    2. verify(): look up by `prefix` (first 12 chars, also stored
+//       cleartext for fast filtering), then argon2.verify on candidates
+//    3. revoke(): set revokedAt — verify() filters these out
+//
+//  Why argon2id over bcrypt?
+//    - bcrypt has a 72-byte input limit (silently truncates)
+//    - argon2id is the OWASP-recommended modern choice
+//    - PHC string format makes upgrade paths easy
+// ============================================================
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  tenantId   String
+  name       String
+  prefix     String // first 12 chars of raw key (sk_live_xxxxx)
+  hash       String    @unique // argon2id hash of the full raw key
+  scopes     String[]  @default([])
+  expiresAt  DateTime?
+  lastUsedAt DateTime?
+  createdBy  String
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, revokedAt])
+  @@index([prefix])
+  @@map("api_keys")
+}
+
+// ============================================================
+//  Phase B — Orders, Sessions, KDS Tickets
+//
+//  This is the keystone module. The frontend fans an order out across
+//  five screens: POS (creation), LiveOrders (operations), POSOrders
+//  (history), TableOrders (multi-round dining), KDS (kitchen), OSS
+//  (customer board). One Order row backs all six surfaces.
+//
+//  Status machine (enforced in code, not a Prisma constraint):
+//    PENDING → ACCEPTED → PREPARING → READY → SERVED
+//    PENDING → ACCEPTED → PREPARING → READY → OUT_FOR_DELIVERY → DELIVERED
+//    Any state → CANCELLED (until SERVED/DELIVERED)
+//
+//  Money: Decimal(12,2). Server is the only authority.
+// ============================================================
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+}
+
+enum OrderChannel {
+  POS
+  WAITER
+  QR
+  ONLINE
+}
+
+enum OrderSource {
+  POS
+  WAITER
+  QR
+  ZOMATO
+  SWIGGY
+  VUEDINE_DIRECT
+  WHATSAPP
+  QR_PAY
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  SERVED
+  CANCELLED
+}
+
+enum OrderPriority {
+  NORMAL
+  RUSH
+}
+
+enum OrderStation {
+  HOT
+  COLD
+  BAR
+  DESSERT
+}
+
+enum OrderEventType {
+  CREATED
+  ACCEPTED
+  STARTED
+  READY
+  DISPATCHED
+  DELIVERED
+  SERVED
+  CANCELLED
+  RECALLED
+  LINE_PREPARED
+  WAITER_RING
+  BILL_REQUESTED
+  FEEDBACK_RECEIVED
+  NOTE_ADDED
+}
+
+enum TableSessionStatus {
+  OPEN
+  PREPARING
+  SERVED
+  AWAITING_PAYMENT
+  CLOSED
+}
+
+enum SessionPaymentStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  REFUNDED
+}
+
+enum PaymentMode {
+  CASH
+  CARD
+  UPI
+  WALLET
+  ONLINE
+  PAY_LATER
+}
+
+enum GuestSignalType {
+  WAITER_RING
+  BILL_REQUEST
+  FEEDBACK
+  HELP
+}
+
+// ----------------------------------------------------------------
+//  TableSession — a guest party at a table over time. Spans multiple
+//  rounds (orders) until they pay and leave. Owns the table lifecycle:
+//  while open the Table.status stays OCCUPIED.
+// ----------------------------------------------------------------
+
+model TableSession {
+  id            String               @id @default(cuid())
+  tenantId      String
+  branchId      String
+  tableId       String
+  guestName     String?
+  guestPhone    String?
+  partySize     Int                  @default(2)
+  status        TableSessionStatus   @default(OPEN)
+  paymentStatus SessionPaymentStatus @default(UNPAID)
+  openedAt      DateTime             @default(now())
+  closedAt      DateTime?
+
+  subtotal      Decimal @default(0) @db.Decimal(12, 2)
+  taxTotal      Decimal @default(0) @db.Decimal(12, 2)
+  serviceTotal  Decimal @default(0) @db.Decimal(12, 2)
+  tipTotal      Decimal @default(0) @db.Decimal(12, 2)
+  discountTotal Decimal @default(0) @db.Decimal(12, 2)
+  grandTotal    Decimal @default(0) @db.Decimal(12, 2)
+
+  metadata Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  orders Order[]
+
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, tableId, status])
+  @@index([tenantId, openedAt])
+  @@map("table_sessions")
+}
+
+// ----------------------------------------------------------------
+//  Order — the canonical ticket. Backs every order screen.
+//
+//  - serial: per-branch + per-day human-readable id (e.g. "BAN-1027")
+//  - token: customer-facing 3-digit token shown on OSS
+//  - sessionId: nullable; only dine-in sessions group orders
+//  - source: where it originated (POS / Zomato / Swiggy / etc.)
+//  - tableNumber: denormalized for the order list (the table can be
+//    renamed without rewriting historical orders)
+//  - idempotencyKey: nullable; non-empty only when the client supplied one
+// ----------------------------------------------------------------
+
+model Order {
+  id        String  @id @default(cuid())
+  tenantId  String
+  branchId  String
+  sessionId String?
+  tableId   String?
+
+  serial   String // 'BAN-1027'
+  token    String // 'TKN-128'
+  type     OrderType
+  channel  OrderChannel
+  source   OrderSource   @default(POS)
+  station  OrderStation  @default(HOT)
+  priority OrderPriority @default(NORMAL)
+  status   OrderStatus   @default(PENDING)
+
+  // Customer info
+  guestName  String?
+  guestPhone String?
+  tableLabel String? // 'Table 7' / 'Counter' / 'Driver Q'
+
+  // Delivery details
+  deliveryAddress String?
+  deliveryNotes   String?
+  driverName      String?
+  driverPhone     String?
+  etaMinutes      Int?
+
+  // Money (server-authoritative)
+  subtotal      Decimal @default(0) @db.Decimal(12, 2)
+  discountTotal Decimal @default(0) @db.Decimal(12, 2)
+  taxTotal      Decimal @default(0) @db.Decimal(12, 2)
+  serviceTotal  Decimal @default(0) @db.Decimal(12, 2)
+  tipTotal      Decimal @default(0) @db.Decimal(12, 2)
+  grandTotal    Decimal @default(0) @db.Decimal(12, 2)
+
+  // Promo + tax breakdown for receipts
+  promoCode    String?
+  taxBreakdown Json? // [{ name: 'GST 5%', rate: 0.05, amount: 12.50 }]
+
+  // Payment
+  paymentMode   PaymentMode          @default(PAY_LATER)
+  paymentStatus SessionPaymentStatus @default(UNPAID)
+
+  // Lifecycle timestamps for SLA/ETA
+  acceptedAt   DateTime?
+  startedAt    DateTime?
+  readyAt      DateTime?
+  servedAt     DateTime?
+  dispatchedAt DateTime?
+  deliveredAt  DateTime?
+  cancelledAt  DateTime?
+  cancelReason String?
+
+  notes String?
+
+  idempotencyKey String?
+  metadata       Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  items      OrderItem[]
+  events     OrderEvent[]
+  payments   Payment[]
+  promotions OrderPromotion[]
+  session    TableSession?    @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, serial])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, branchId, status])
+  @@index([tenantId, branchId, createdAt])
+  @@index([tenantId, branchId, channel, status])
+  @@index([tenantId, branchId, source])
+  @@index([sessionId])
+  @@index([tableId])
+  @@map("orders")
+}
+
+// ----------------------------------------------------------------
+//  OrderItem — a line on the ticket. Carries variant/addons/notes
+//  + the unit price captured at create-time so future menu price
+//  changes do not retroactively rewrite history.
+// ----------------------------------------------------------------
+
+model OrderItem {
+  id      String @id @default(cuid())
+  orderId String
+
+  // Soft FK — items can be soft-deleted; we keep the snapshot.
+  itemId   String?
+  itemName String
+  emoji    String?
+
+  qty       Int     @default(1)
+  unitPrice Decimal @db.Decimal(12, 2)
+  lineTotal Decimal @db.Decimal(12, 2)
+
+  variantLabel String?
+  variantId    String?
+  addons       Json? // [{ id, label, price }]
+  notes        String?
+  spice        Int? // 1|2|3 (matches GuestItem)
+
+  station    OrderStation @default(HOT)
+  prepared   Boolean      @default(false)
+  preparedAt DateTime?
+  preparedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([orderId, prepared])
+  @@map("order_items")
+}
+
+// ----------------------------------------------------------------
+//  OrderEvent — append-only timeline for an order. Powers the
+//  POSOrders detail drawer and feeds analytics.
+// ----------------------------------------------------------------
+
+model OrderEvent {
+  id        String         @id @default(cuid())
+  orderId   String
+  type      OrderEventType
+  actorId   String?
+  actorName String?
+  message   String?
+  metadata  Json?
+  createdAt DateTime       @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_events")
+}
+
+// ----------------------------------------------------------------
+//  OrderSerial — per-branch + per-day counter. We keep last issued
+//  number atomically to mint dense, human-readable serials.
+//
+//   key = `${branchId}:${YYYYMMDD}`
+//   next = current.next + 1
+// ----------------------------------------------------------------
+
+model OrderSerial {
+  id       String @id @default(cuid())
+  branchId String
+  bucket   String // 'YYYYMMDD'
+  next     Int    @default(1)
+
+  @@unique([branchId, bucket])
+  @@map("order_serials")
+}
+
+// ----------------------------------------------------------------
+//  GuestSignal — waiter-ring, bill-request, feedback, help
+//  signals from the customer PWA. Surface through LiveOrders.
+// ----------------------------------------------------------------
+
+model GuestSignal {
+  id         String          @id @default(cuid())
+  tenantId   String
+  branchId   String
+  tableId    String?
+  orderId    String?
+  type       GuestSignalType
+  guestName  String?
+  guestPhone String?
+  message    String?
+  rating     Int? // 1..5 for feedback
+  resolved   Boolean         @default(false)
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, branchId, resolved, createdAt])
+  @@index([orderId])
+  @@map("guest_signals")
+}
+
+// ============================================================
+//  Phase C — Payments, Refunds, Settlements
+// ============================================================
+
+enum PaymentType {
+  SALE
+  REFUND
+  TIP
+  COMP
+  SETTLEMENT
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  WALLET
+  ONLINE
+  LOYALTY
+}
+
+enum PaymentTxStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+// Payment — one row per money event (sale / refund / tip / comp / settlement).
+// Refunds carry parentPaymentId pointing at the original sale.
+model Payment {
+  id       String  @id @default(cuid())
+  tenantId String
+  branchId String
+  orderId  String?
+  serial   String // 'TXN-####'
+
+  type     PaymentType
+  method   PaymentMethod
+  status   PaymentTxStatus @default(PENDING)
+  amount   Decimal         @db.Decimal(12, 2)
+  fee      Decimal         @default(0) @db.Decimal(12, 2)
+  currency String          @default("INR")
+
+  cashierId    String?
+  cashierName  String?
+  customerName String?
+  reference    String? // utr / razorpay id / auth id
+  gateway      String? // 'razorpay' | 'stripe' | null for cash
+  gatewayMeta  Json?
+  channel      String? // 'POS' | 'Online' | 'QR' | 'Waiter'
+
+  parentPaymentId String?
+  parent          Payment?  @relation("PaymentRefund", fields: [parentPaymentId], references: [id], onDelete: SetNull)
+  children        Payment[] @relation("PaymentRefund")
+
+  webhookEventId String? // dedupe key for inbound webhooks
+  capturedAt     DateTime?
+  failedReason   String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, serial])
+  @@unique([gateway, webhookEventId])
+  @@index([tenantId, branchId, type, status])
+  @@index([tenantId, branchId, createdAt])
+  @@index([orderId])
+  @@index([reference])
+  @@map("payments")
+}
+
+model Settlement {
+  id            String   @id @default(cuid())
+  tenantId      String
+  gateway       String
+  reference     String // settlement batch id
+  grossAmount   Decimal  @db.Decimal(12, 2)
+  feeAmount     Decimal  @db.Decimal(12, 2)
+  netAmount     Decimal  @db.Decimal(12, 2)
+  paymentCount  Int      @default(0)
+  settledAt     DateTime
+  bankReference String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([gateway, reference])
+  @@index([tenantId, settledAt])
+  @@map("settlements")
+}
+
+// Per-tenant payment settings — driven by Settings → Payments section.
+// The Settings UI exposes: method toggles, gateway keys, autoCapture, partial,
+// settlement schedule, refund policy.
+model PaymentSettings {
+  id       String @id @default(cuid())
+  tenantId String @unique
+
+  // Method toggles (mirror UI order)
+  cashEnabled          Boolean @default(true)
+  cardEnabled          Boolean @default(true)
+  upiEnabled           Boolean @default(true)
+  walletEnabled        Boolean @default(true)
+  onlineEnabled        Boolean @default(true)
+  loyaltyEnabled       Boolean @default(true)
+  payOnDeliveryEnabled Boolean @default(true)
+
+  // Gateway: razorpay only in v1
+  gateway           String  @default("razorpay")
+  razorpayKeyId     String?
+  razorpayKeySecret String? // stored encrypted in production; raw in dev
+  webhookSecret     String?
+
+  autoCapture     Boolean @default(true)
+  partialPayments Boolean @default(true)
+
+  settlementSchedule String @default("t-1") // 't-0' | 't-1' | 't-2'
+  refundPolicy       String @default("full") // 'full' | 'partial' | 'none'
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("payment_settings")
+}
+
+// Per-branch payment serials — per-day buckets like OrderSerial
+model PaymentSerial {
+  id       String @id @default(cuid())
+  branchId String
+  bucket   String
+  next     Int    @default(1)
+
+  @@unique([branchId, bucket])
+  @@map("payment_serials")
+}
+
+// ============================================================
+//  Phase D — Promotions: Coupons + Offers
+//
+//  A unified promotion engine powering both Coupons (code-redeemed) and
+//  Offers (auto-applied bundles / time-windowed discounts), feeding the
+//  order calculator from Phase B.
+//
+//  Stacking rule (v1): only one promotion per order, EXCEPT auto-applied
+//  OFFERS may stack with a single COUPON. Negative totals clamp at zero.
+//  Happy-hour time gating uses the branch timezone.
+// ============================================================
+
+enum PromotionType {
+  COUPON
+  OFFER
+}
+
+enum PromotionKind {
+  PERCENTAGE
+  FLAT
+  BOGO
+  FREE_ITEM
+  COMBO
+  HAPPY_HOUR
+  LOYALTY
+  FESTIVAL
+}
+
+enum PromotionStatus {
+  ACTIVE
+  SCHEDULED
+  PAUSED
+  EXPIRED
+  ENDED
+}
+
+enum PromotionScope {
+  WHOLE_ORDER
+  ITEMS
+  CATEGORIES
+}
+
+enum DayOfWeek {
+  MON
+  TUE
+  WED
+  THU
+  FRI
+  SAT
+  SUN
+}
+
+model Promotion {
+  id       String          @id @default(cuid())
+  tenantId String
+  type     PromotionType
+  kind     PromotionKind
+  status   PromotionStatus @default(ACTIVE)
+
+  // Common fields
+  title       String
+  description String?
+  summary     String? // short display string for offers, e.g. 'Flat 30% off drinks'
+  emoji       String?
+  hero        String? // gradient class for offer card
+
+  code        String? // null for offers, required + unique for coupons
+  value       Decimal  @default(0) @db.Decimal(12, 2)
+  minOrder    Decimal  @default(0) @db.Decimal(12, 2)
+  maxDiscount Decimal? @db.Decimal(12, 2)
+
+  startsAt  DateTime
+  endsAt    DateTime
+  startTime String? // 'HH:MM' for time-of-day offers
+  endTime   String?
+  days      DayOfWeek[] @default([])
+
+  channels String[] @default([]) // ['POS', 'QR', 'Online', 'WhatsApp']
+
+  usageLimit   Int @default(0) // 0 = unlimited
+  perUserLimit Int @default(1)
+  used         Int @default(0)
+
+  // Targeting
+  scope            PromotionScope @default(WHOLE_ORDER)
+  targetItemIds    String[]       @default([])
+  targetCategories String[]       @default([])
+
+  // Auto-apply for OFFERS
+  autoApply Boolean @default(false)
+  trigger   Json? // e.g. { event: 'birthday', within: 7 }
+
+  redemptions Int     @default(0)
+  revenue     Decimal @default(0) @db.Decimal(14, 2)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  redemptionRecords PromotionRedemption[]
+  orderLinks        OrderPromotion[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, type, status])
+  @@index([tenantId, autoApply, status])
+  @@map("promotions")
+}
+
+model PromotionRedemption {
+  id          String   @id @default(cuid())
+  promotionId String
+  orderId     String
+  customerId  String? // phone or customer id used for per-user-limit
+  amountSaved Decimal  @db.Decimal(12, 2)
+  at          DateTime @default(now())
+
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+
+  @@index([promotionId, at])
+  @@index([customerId, promotionId])
+  @@map("promotion_redemptions")
+}
+
+model OrderPromotion {
+  id          String  @id @default(cuid())
+  orderId     String
+  promotionId String
+  code        String?
+  amountSaved Decimal @db.Decimal(12, 2)
+
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, promotionId])
+  @@index([promotionId])
+  @@map("order_promotions")
+}
+
+// ============================================================
+//  Phase E — Users admin, Roles & Permissions, Customers,
+//             Shifts, Customer Profiles
+// ============================================================
+
+// Custom role — supplements the UserRole enum with tenant-defined roles.
+// The permissions string array holds keys like 'pos.create_order'.
+// systemRole=true rows are seeded and cannot be deleted or edited.
+model Role {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  systemRole  Boolean  @default(false)
+  color       String   @default("from-violet-500 to-indigo-500")
+  members     Int      @default(0)
+  permissions String[] @default([])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users User[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, deletedAt])
+  @@map("roles")
+}
+
+// Shift — cash-drawer open/close. cashIn is set at start.
+// cashOut and variance computed at end.
+model Shift {
+  id        String    @id @default(cuid())
+  tenantId  String
+  branchId  String
+  userId    String
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  cashIn    Decimal?  @db.Decimal(12, 2)
+  cashOut   Decimal?  @db.Decimal(12, 2)
+  variance  Decimal?  @db.Decimal(12, 2)
+  note      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt(sort: Desc)])
+  @@index([tenantId, branchId, startedAt(sort: Desc)])
+  @@map("shifts")
+}
+
+// CustomerTier — recomputed nightly from rolling 12-month spend.
+enum CustomerTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+// CustomerProfile — rich customer record. One per customer User row.
+model CustomerProfile {
+  id               String       @id @default(cuid())
+  userId           String       @unique
+  tenantId         String
+  tier             CustomerTier @default(BRONZE)
+  totalSpend       Decimal      @default(0) @db.Decimal(14, 2)
+  totalOrders      Int          @default(0)
+  lastOrderAt      DateTime?
+  birthday         DateTime?
+  city             String?
+  channels         String[]     @default([]) // 'Email','SMS','WhatsApp','Push'
+  tags             String[]     @default([]) // 'VIP','Allergy','Catering'
+  notes            String?
+  loyaltyPoints    Int          @default(0)
+  marketingConsent Boolean      @default(false)
+  unsubscribedAt   DateTime?
+  anonymizedAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, tier])
+  @@index([tenantId, totalSpend(sort: Desc)])
+  @@index([tenantId, lastOrderAt])
+  @@index([tenantId, anonymizedAt])
+  @@map("customer_profiles")
+}
+
+// ============================================================
+//  Phase F — Tenant settings, Taxes, Branding, Hardware
+// ============================================================
+
+enum WeekStart {
+  MONDAY
+  SUNDAY
+  SATURDAY
+}
+
+enum HardwareType {
+  RECEIPT_PRINTER
+  KOT_PRINTER
+  KDS_DISPLAY
+  OSS_DISPLAY
+  CASH_DRAWER
+  CUSTOMER_DISPLAY
+  WEIGHING_SCALE
+}
+
+// TaxSlab — multi-slab GST/VAT. branchId null = tenant default; a branch
+// row overrides the tenant default (Pitfall #1 branch-override pattern).
+model TaxSlab {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String? // null = applies to all branches
+  name      String // 'GST 5%', 'GST 18% AC'
+  rate      Decimal  @db.Decimal(5, 2)
+  hsnCodes  String[] @default([])
+  inclusive Boolean  @default(false)
+  isDefault Boolean  @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId, branchId])
+  @@map("tax_slabs")
+}
+
+// PaymentMethodConfig — per-method enablement + service charge, with the
+// branch-override pattern (branchId null = tenant default).
+model PaymentMethodConfig {
+  id            String        @id @default(cuid())
+  tenantId      String
+  branchId      String?
+  method        PaymentMethod
+  enabled       Boolean       @default(true)
+  preferred     Boolean       @default(false)
+  serviceCharge Decimal       @default(0) @db.Decimal(5, 2)
+  meta          Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, branchId, method])
+  @@map("payment_method_configs")
+}
+
+// HardwareDevice — printers, KDS/OSS displays, cash drawers, scales.
+// Authenticates with a rotating pairingToken (Pitfall #2).
+model HardwareDevice {
+  id           String        @id @default(cuid())
+  tenantId     String
+  branchId     String
+  type         HardwareType
+  label        String
+  model        String?
+  ip           String?
+  macAddress   String?
+  station      OrderStation? // for KOT printers
+  pairedAt     DateTime?
+  lastSeenAt   DateTime?
+  pairingToken String        @unique
+  active       Boolean       @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId, branchId, type])
+  @@map("hardware_devices")
+}
+
+// NotificationPreference — the events × channels matrix. branchId/userId
+// null = tenant-wide default.
+model NotificationPreference {
+  id       String  @id @default(cuid())
+  tenantId String
+  branchId String?
+  userId   String? // null = tenant-wide default
+  event    String // 'newOrder', 'lowStock', 'reservationReminder'
+  channel  String // 'sound', 'push', 'email', 'sms'
+  enabled  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, branchId, userId, event, channel])
+  @@map("notification_preferences")
+}
+
+// ============================================================
+//  Phase G — QR Codes & scan analytics
+// ============================================================
+
+enum QrType {
+  TABLE
+  COUNTER
+  TAKEAWAY
+  DELIVERY
+  MARKETING
+}
+
+enum QrStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+// QrCode — a mintable, trackable QR. TABLE-type rows are auto-minted on table
+// creation and share the table's qrToken; other types are minted manually.
+model QrCode {
+  id          String   @id @default(cuid())
+  tenantId    String
+  branchId    String
+  type        QrType
+  label       String // 'Table 7', 'Pickup counter', 'Delivery rider 03'
+  url         String // public URL the QR encodes (scan resolver)
+  token       String   @unique // 16-char URL slug
+  status      QrStatus @default(ACTIVE)
+  thumbnail   String? // optional cached QR image (data URL)
+  scans       Int      @default(0) // denorm — incremented on scan
+  ordersCount Int      @default(0) // denorm — incremented on order placed via this QR
+
+  // Linkage — TABLE-type rows point at the owning table (1:1).
+  tableId String? @unique
+  table   Table?  @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  scanLog QrScan[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId, branchId, type])
+  @@index([token])
+  @@map("qr_codes")
+}
+
+// QrScan — append-only scan event. city filled async by qr.geoip-enrich.
+model QrScan {
+  id        String   @id @default(cuid())
+  qrCodeId  String
+  ip        String?
+  userAgent String?
+  referrer  String?
+  city      String? // GeoIP enrich
+  at        DateTime @default(now())
+
+  qrCode QrCode @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+
+  @@index([qrCodeId, at])
+  @@map("qr_scans")
+}
+
+// ============================================================
+//  Phase H — Communications: Campaigns, Push, Messages
+// ============================================================
+
+enum CampaignType {
+  PUSH
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum CampaignEventType {
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  FAILED
+  UNSUBSCRIBED
+  BOUNCED
+}
+
+enum ConversationChannel {
+  WHATSAPP
+  SMS
+  INSTAGRAM
+  WEBCHAT
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  RESOLVED
+}
+
+enum MessageSender {
+  CUSTOMER
+  AGENT
+  BOT
+}
+
+model NotificationCampaign {
+  id            String         @id @default(cuid())
+  tenantId      String
+  type          CampaignType
+  title         String
+  body          String
+  imageUrl      String?
+  imageEmoji    String?
+  ctaLabel      String?
+  ctaUrl        String?
+  audience      String // segment id or 'custom'
+  audienceQuery Json? // for ad-hoc segments
+  audienceSize  Int            @default(0)
+  status        CampaignStatus @default(DRAFT)
+  scheduledFor  DateTime?
+  sentAt        DateTime?
+  delivered     Int            @default(0)
+  opened        Int            @default(0)
+  clicked       Int            @default(0)
+  failed        Int            @default(0)
+  unsubscribed  Int            @default(0)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  events CampaignEvent[]
+
+  @@index([tenantId, status, scheduledFor])
+  @@map("notification_campaigns")
+}
+
+model CampaignEvent {
+  id         String            @id @default(cuid())
+  campaignId String
+  customerId String?
+  type       CampaignEventType
+  channel    String // 'push', 'email', 'sms', 'whatsapp'
+  meta       Json?
+  at         DateTime          @default(now())
+
+  campaign NotificationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, type])
+  @@index([customerId, at])
+  @@map("campaign_events")
+}
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  endpoint   String   @unique
+  keys       Json // { p256dh, auth }
+  platform   String // 'web', 'ios', 'android'
+  deviceId   String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([tenantId, userId])
+  @@map("push_subscriptions")
+}
+
+// Saved audience segment — a named rule used by the campaign editor.
+model Segment {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  rule      Json // { kind, tier?, tags?, minOrders?, lapsedDays?, channel? }
+  systemKey String? // 'all'|'vip'|'loyal'|'lapsed'|'new' for built-ins
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@unique([tenantId, name])
+  @@map("segments")
+}
+
+model Conversation {
+  id          String             @id @default(cuid())
+  tenantId    String
+  branchId    String?
+  customerId  String?
+  channel     ConversationChannel
+  externalRef String? // provider conversation id
+  status      ConversationStatus @default(OPEN)
+  unread      Int                @default(0)
+  starred     Boolean            @default(false)
+  tags        String[]           @default([])
+  agentId     String?
+  customerName String?
+  customerPhone String?
+  lastAt      DateTime           @default(now())
+  lastSnippet String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages Message[]
+
+  @@index([tenantId, status, lastAt(sort: Desc)])
+  @@index([customerId, lastAt(sort: Desc)])
+  @@index([externalRef])
+  @@map("conversations")
+}
+
+model Message {
+  id             String        @id @default(cuid())
+  conversationId String
+  sender         MessageSender
+  body           String
+  attachments    Json? // [{ url, kind }]
+  read           Boolean       @default(false)
+  externalRef    String? // provider message id
+  at             DateTime      @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, at])
+  @@index([externalRef])
+  @@map("messages")
+}
+
+
+// ============================================================
+//  Integrations — generic integration store + webhook log (Phase J)
+// ============================================================
+
+enum IntegrationCategory {
+  AGGREGATOR
+  PAYMENTS
+  MESSAGING
+  ACCOUNTING
+  REVIEWS
+  MARKETING
+  HARDWARE
+  AI
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  AVAILABLE
+  COMING_SOON
+  ERROR
+}
+
+model Integration {
+  id            String              @id @default(cuid())
+  tenantId      String
+  branchId      String?
+  provider      String // 'zomato', 'swiggy', 'razorpay', 'whatsapp', ...
+  category      IntegrationCategory
+  status        IntegrationStatus   @default(AVAILABLE)
+  credentials   Json? // sensitive fields encrypted via crypto.js before persist
+  webhookUrl    String? // ours, for the partner to call
+  webhookSecret String? // they sign callbacks with this
+  config        Json? // non-secret toggles (auto_accept, auto_print, ...)
+  meta          Json?
+  lastSyncAt    DateTime?
+  lastErrorAt   DateTime?
+  lastError     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, branchId, provider])
+  @@index([provider, status])
+  @@map("integrations")
+}
+
+model WebhookEvent {
+  id            String   @id @default(cuid())
+  integrationId String?
+  provider      String
+  externalId    String // for dedupe
+  signature     String?
+  rawPayload    Json
+  receivedAt    DateTime @default(now())
+  processedAt   DateTime?
+  errorMessage  String?
+
+  @@unique([provider, externalId])
+  @@index([processedAt])
+  @@map("webhook_events")
+}
+
+
+// ============================================================
+//  SaaS billing — Vuedine's own subscriptions (Phase K)
+// ============================================================
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  FAILED
+  VOID
+}
+
+model Plan {
+  id      String  @id @default(cuid())
+  slug    String  @unique // 'starter', 'growth', 'enterprise'
+  name    String
+  blurb   String?
+  monthly Decimal @db.Decimal(12, 2)
+  yearly  Decimal @db.Decimal(12, 2) // monthly equivalent
+  features Json // [{ label, included }]
+  active  Boolean @default(true)
+
+  @@map("plans")
+}
+
+model Subscription {
+  id             String             @id @default(cuid())
+  tenantId       String             @unique
+  planSlug       String
+  cycle          BillingCycle
+  status         SubscriptionStatus
+  startedAt      DateTime
+  renewsAt       DateTime
+  cancelledAt    DateTime?
+  trialEndsAt    DateTime?
+  seatLimit      Int
+  branchLimit    Int
+  storageLimitGb Decimal            @db.Decimal(8, 2)
+  aiQuota        Int
+  meta           Json?
+
+  invoices     Invoice[]
+  usageRollups UsageRollup[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("subscriptions")
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  tenantId       String
+  subscriptionId String
+  number         String        @unique // 'INV-2026-0521'
+  period         String // 'May 2026'
+  amount         Decimal       @db.Decimal(12, 2)
+  taxAmount      Decimal       @db.Decimal(12, 2) @default(0)
+  status         InvoiceStatus
+  paymentRef     String?
+  pdfUrl         String?
+  issuedAt       DateTime
+  dueAt          DateTime
+  paidAt         DateTime?
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([tenantId, issuedAt(sort: Desc)])
+  @@map("invoices")
+}
+
+model UsageRollup {
+  id             String   @id @default(cuid())
+  subscriptionId String
+  metric         String // 'outlets', 'seats', 'aiRequests', 'storageGb'
+  value          Decimal  @db.Decimal(14, 4)
+  capturedAt     DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId, metric, capturedAt])
+  @@map("usage_rollups")
+}

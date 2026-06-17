@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+logs/
+prisma/migrations/
+docs/openapi.json
+docs/postman.json
+package-lock.json
+scripts/*.sh

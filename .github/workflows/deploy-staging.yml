@@ -1,0 +1,89 @@
+# ============================================================
+#  Auto-deploy to staging on push to develop.
+#
+#  Flow:
+#    1. Wait for CI's `build` job to publish the image
+#    2. Run prisma migrate deploy against the staging DB
+#    3. SSH into the staging host, pull the image, roll the api+worker
+#    4. Smoke test the public URL
+#    5. Notify Slack (success or failure)
+#
+#  Concurrency: deploy-staging is serialised; never cancel mid-flight or
+#  migrations land half-applied.
+# ============================================================
+name: Deploy Staging
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false # never cancel a deploy mid-flight
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.api.vuedine.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for CI build to finish
+        uses: lewagon/wait-on-check-action@v1.3.4
+        with:
+          ref: ${{ github.sha }}
+          check-name: build
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 15
+          allowed-conclusions: success
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+        working-directory: api
+
+      - name: Run migrations against staging
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DB_URL }}
+        run: npx prisma migrate deploy
+        working-directory: api
+
+      - name: Roll API + worker on staging
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: deploy
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/vuedine
+            export IMAGE_TAG=${{ github.sha }}
+            docker compose pull api worker web
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+              up -d --no-deps --remove-orphans api worker web
+            echo "${{ github.sha }}" > /opt/vuedine/.deployed-sha
+            sleep 10
+            curl -fsS https://staging.api.vuedine.com/health > /dev/null
+
+      - name: Smoke test
+        env:
+          SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+        run: bash api/scripts/smoke-test.sh https://staging.api.vuedine.com
+
+      - name: Notify Slack
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,commit,author,workflow,took
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
