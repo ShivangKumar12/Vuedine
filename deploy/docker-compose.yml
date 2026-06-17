@@ -1,0 +1,183 @@
+# ============================================================
+#  Vuedine — single-server production stack (KVM VPS).
+#
+#  Self-contained: Postgres + Redis + API + worker + web SPA + Caddy edge
+#  (automatic HTTPS via Let's Encrypt). Built from source on the box.
+#
+#  Only Caddy publishes ports (80/443). Postgres + Redis stay on the
+#  internal Docker network — never exposed to the internet.
+#
+#  Usage (from the `deploy/` directory on the server):
+#    cp .env.example .env && edit .env
+#    docker compose build
+#    docker compose --profile tools run --rm migrate        # migrate (+ seed once)
+#    docker compose up -d
+# ============================================================
+
+name: vuedine-prod
+
+networks:
+  vuedine:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+
+services:
+  # ---- PostgreSQL (internal only) ----
+  postgres:
+    image: postgres:16-alpine
+    container_name: vuedine_prod_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vuedine
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: vuedine
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../api/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command:
+      - 'postgres'
+      - '-c'
+      - 'max_connections=200'
+      - '-c'
+      - 'shared_buffers=512MB'
+      - '-c'
+      - 'shared_preload_libraries=pg_stat_statements'
+    networks: [vuedine]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U vuedine -d vuedine']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---- Redis (internal only) ----
+  redis:
+    image: redis:7-alpine
+    container_name: vuedine_prod_redis
+    restart: unless-stopped
+    command:
+      - 'redis-server'
+      - '--appendonly'
+      - 'yes'
+      - '--appendfsync'
+      - 'everysec'
+      - '--maxmemory'
+      - '512mb'
+      - '--maxmemory-policy'
+      - 'allkeys-lru'
+    volumes:
+      - redis_data:/data
+    networks: [vuedine]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---- API ----
+  api:
+    build:
+      context: ../api
+      dockerfile: docker/Dockerfile
+      target: production
+    image: vuedine-api:prod
+    container_name: vuedine_prod_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: '4000'
+      DATABASE_URL: postgresql://vuedine:${POSTGRES_PASSWORD}@postgres:5432/vuedine?schema=public&connection_limit=15&pool_timeout=20
+      REDIS_URL: redis://redis:6379
+    networks: [vuedine]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:4000/health']
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 25s
+
+  # ---- Background workers (BullMQ) ----
+  worker:
+    image: vuedine-api:prod
+    container_name: vuedine_prod_worker
+    restart: unless-stopped
+    command: ['node', 'src/queues/workers/index.js']
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://vuedine:${POSTGRES_PASSWORD}@postgres:5432/vuedine?schema=public&connection_limit=10&pool_timeout=20
+      REDIS_URL: redis://redis:6379
+    networks: [vuedine]
+    depends_on:
+      api: { condition: service_started }
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  # ---- Web (dashboard + guest PWA), nginx-served ----
+  web:
+    build:
+      context: ../app
+      dockerfile: Dockerfile
+      target: runtime
+      args:
+        VITE_API_URL: https://${API_DOMAIN}
+    image: vuedine-web:prod
+    container_name: vuedine_prod_web
+    restart: unless-stopped
+    networks: [vuedine]
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:80/healthz']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ---- Caddy edge: automatic HTTPS + reverse proxy ----
+  caddy:
+    image: caddy:2-alpine
+    container_name: vuedine_prod_caddy
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [vuedine]
+    depends_on:
+      api: { condition: service_started }
+      web: { condition: service_started }
+
+  # ---- One-off migration / seed runner (full deps + prisma CLI) ----
+  #  docker compose --profile tools run --rm migrate                 # migrate deploy
+  #  docker compose --profile tools run --rm migrate node prisma/seed.js   # seed (first run)
+  migrate:
+    build:
+      context: ../api
+      dockerfile: docker/Dockerfile
+      target: builder
+    image: vuedine-api:migrate
+    profiles: ['tools']
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://vuedine:${POSTGRES_PASSWORD}@postgres:5432/vuedine?schema=public
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    networks: [vuedine]
+    depends_on:
+      postgres: { condition: service_healthy }

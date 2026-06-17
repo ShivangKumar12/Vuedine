@@ -1,0 +1,46 @@
+# ============================================================
+#  Vuedine edge — automatic HTTPS (Let's Encrypt) + reverse proxy.
+#  Caddy provisions and renews certs for {$DOMAIN} and {$API_DOMAIN}
+#  automatically. WebSocket upgrades for Socket.IO pass through natively.
+# ============================================================
+{
+	email {$ACME_EMAIL}
+	# Uncomment to test against the Let's Encrypt staging CA first:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# ---- Dashboard + guest PWA ----
+{$DOMAIN}, www.{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:80
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+# ---- API (REST + Socket.IO) ----
+{$API_DOMAIN} {
+	encode gzip
+
+	# Block the metrics endpoint from the public internet (token-gated anyway).
+	@metrics path /metrics
+	respond @metrics 403
+
+	reverse_proxy api:4000 {
+		# Long-lived timeouts for Socket.IO / streamed exports.
+		transport http {
+			read_timeout 600s
+			write_timeout 600s
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+}

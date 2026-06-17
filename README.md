@@ -83,6 +83,16 @@ cd app && npm run dev            # Web  → http://localhost:5173
 
 ---
 
+## 🚀 Going live (production)
+
+To deploy to a real server (e.g. a Hostinger **KVM 2** VPS) on your own
+domain with automatic HTTPS, follow **[DEPLOYMENT.md](./DEPLOYMENT.md)** — a
+complete step-by-step runbook (DNS → server prep → secrets → build → launch →
+backups → updates → hardening). The self-contained production stack lives in
+[`deploy/`](./deploy) (Postgres + Redis + API + worker + web + Caddy edge).
+
+---
+
 ## 🧱 Architecture & ports
 
 ```
